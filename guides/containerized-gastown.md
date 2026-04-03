@@ -284,75 +284,276 @@ gt rig add infra /home/gtuser/gt/rigs/infra/repo
 
 ## Git Authentication Inside the Container
 
-Agents need to push/pull from GitHub. Options:
+Agents need to push/pull from GitHub. Use the **gateway sidecar** (see Secrets Management below) — it proxies GitHub API calls and provides a git credential helper so agents can `git push` without ever holding a raw token.
 
-### Option 1: GitHub CLI (recommended)
+If you're not using the gateway yet, a quick interim option:
 
 ```bash
-# Inside the container
+# Inside the container — use GitHub CLI
 gh auth login
 ```
 
-This stores a token inside the container's home directory (persists in the gt-data volume).
-
-### Option 2: Git credential helper
-
-Mount a read-only git credentials file:
-
-```yaml
-volumes:
-  - ~/.git-credentials:/home/gtuser/.git-credentials:ro
-```
-
-### Option 3: SSH key (read-only)
-
-```yaml
-volumes:
-  - ~/.ssh/id_ed25519:/home/gtuser/.ssh/id_ed25519:ro
-  - ~/.ssh/known_hosts:/home/gtuser/.ssh/known_hosts:ro
-```
-
-**Note:** Mounting SSH keys gives agents access to everything those keys can access. Use a deploy key scoped to specific repos if possible.
+This stores a token inside the container (persists in the gt-data volume). It's simpler but the agent holds the raw token. Move to the gateway when you set up the full stack.
 
 ---
 
 ## Secrets Management
 
-The biggest risk with containerized agents isn't filesystem access — it's secrets. Even with bind-mounts locked down, agents need API keys, git tokens, and database credentials to do useful work. If those secrets live in the container's environment or filesystem, a rogue agent can read and exfiltrate them.
+The biggest risk with containerized agents isn't filesystem access — it's secrets. Agents need to call Jira, push to GitHub, access databases. If those tokens live in the container's environment, a rogue agent can read and exfiltrate them.
 
-**Principle:** Agents should be able to *use* secrets without being able to *read* them directly.
+**Principle:** Agents should be able to *use* external services without ever seeing the raw tokens.
 
-### Architecture: Secrets Sidecar
+### Architecture: Service Gateway Sidecar
+
+Instead of giving agents tokens, run a **gateway sidecar** that holds the tokens and proxies API calls. Agents call the gateway; the gateway authenticates to the real service. Tokens never leave the sidecar.
 
 ```
-┌─────────────────────────────────────────────────┐
-│ Docker Network: gt-net (no docker.sock)         │
-│                                                 │
-│  ┌─────────────┐       ┌──────────────────┐     │
-│  │  secrets     │       │  gastown         │     │
-│  │  (sidecar)   │◄──────│  (GT + agents)   │     │
-│  │              │ HTTP  │                  │     │
-│  │  Reads from: │ :9999 │  Calls:          │     │
-│  │  - Keychain  │       │  secrets:9999/   │     │
-│  │  - .env file │       │  get?name=...    │     │
-│  │  - 1Password │       │                  │     │
-│  └─────────────┘       └──────────────────┘     │
-│         │                                       │
-│         │ (host access for keychain only)        │
-└─────────│───────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ Docker Network: gt-net (no docker.sock)                  │
+│                                                          │
+│  ┌──────────────────┐        ┌──────────────────┐        │
+│  │  gateway          │        │  gastown         │        │
+│  │  (sidecar)        │◄───────│  (GT + agents)   │        │
+│  │                   │ HTTP   │                  │        │
+│  │  Holds tokens for:│ :9999  │  Agents call:    │        │
+│  │  - GitHub         │        │  gateway:9999/   │        │
+│  │  - Jira           │        │  github/...      │        │
+│  │  - Slack          │        │  jira/...        │        │
+│  │  - any API        │        │  slack/...       │        │
+│  │                   │        │                  │        │
+│  │  Can enforce:     │        │  Never sees:     │        │
+│  │  - path allowlist │        │  - raw tokens    │        │
+│  │  - read-only      │        │  - credentials   │        │
+│  │  - rate limits    │        │                  │        │
+│  │  - audit logging  │        │                  │        │
+│  └──────────────────┘        └──────────────────┘        │
+│         │                                                │
+│         │ reads sealed env file (no vault/keychain)       │
+└─────────│────────────────────────────────────────────────┘
           ▼
-    macOS Keychain / 1Password / env file
+    ~/.gt-secrets/myproject.env (host, chmod 600)
 ```
 
-The secrets sidecar:
-- Runs in its own container on the same Docker network
-- Has NO access to the workspace or GT data
-- Exposes a simple HTTP API on the internal network (not port-mapped to host)
-- Reads secrets from the host's macOS Keychain, 1Password CLI, or an encrypted `.env` file
-- Agents in the GT container call `curl secrets:9999/get?name=GITHUB_TOKEN` and get the value
-- Secrets are served on-demand, never stored in GT container's env or filesystem
+### Why Not Give Agents the Raw Token?
 
-### Docker Compose with Secrets Sidecar
+Even with allowlists, once an agent has a Jira token it can call *any* Jira endpoint — delete issues, access other projects, read user data. The allowlist only controls whether the agent gets the token, not what it does with it.
+
+With a gateway proxy:
+- **Path restrictions** — only allow `/issue/PROJ-*`, block `/admin/*`, `/user/*`
+- **Method restrictions** — allow GET (read), block DELETE
+- **Rate limits** — prevent agents from hammering APIs
+- **Audit logging** — every API call goes through one place
+- **Zero token exposure** — agents never see credentials
+
+### Sealed Secrets File
+
+The gateway reads tokens from a flat file — not from Keychain, 1Password, or any vault. If the gateway is compromised, the attacker gets only the tokens in that file, not your entire credential store.
+
+```bash
+# On the host, create a secrets file for this project
+mkdir -p ~/.gt-secrets
+
+cat > ~/.gt-secrets/myproject.env << 'EOF'
+# GitHub — fine-grained PAT scoped to this repo only
+GITHUB_TOKEN=github_pat_xxxxxxxxxxxx
+
+# Jira — API token (user-scoped, so we proxy it)
+JIRA_TOKEN=ATATTxxxxxxxxxxxx
+JIRA_EMAIL=homer@work.com
+JIRA_URL=https://yourcompany.atlassian.net
+
+# Slack — bot token scoped to specific channels
+SLACK_TOKEN=xoxb-xxxxxxxxxxxx
+EOF
+
+chmod 600 ~/.gt-secrets/myproject.env
+```
+
+**Per-rig secrets:** Separate files per project. Only mount the relevant one.
+
+```bash
+~/.gt-secrets/
+├── frontend.env      # GitHub PAT for frontend repo
+├── backend.env       # GitHub PAT + Jira + DB credentials
+└── infra.env         # AWS keys for infra rig
+```
+
+### Gateway Sidecar Implementation
+
+```python
+# gateway-sidecar/server.py
+import json
+import logging
+import os
+import re
+import time
+
+import requests
+from flask import Flask, Response, request, jsonify
+
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+
+# Load secrets from sealed env file
+SECRETS = {}
+env_file = os.environ.get("SECRETS_FILE", "/secrets/secrets.env")
+if os.path.exists(env_file):
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                SECRETS[key.strip()] = val.strip()
+
+# --- Route configs (loaded from env or config file) ---
+
+# Jira: which project keys agents can access
+JIRA_ALLOWED_PROJECTS = set(
+    os.environ.get("JIRA_ALLOWED_PROJECTS", "").split(",")
+)
+# GitHub: which repos agents can access (org/repo format)
+GITHUB_ALLOWED_REPOS = set(
+    os.environ.get("GITHUB_ALLOWED_REPOS", "").split(",")
+)
+
+TIMEOUT = 15
+
+
+# --- GitHub Proxy ---
+
+@app.route("/github/<path:api_path>", methods=["GET", "POST", "PATCH"])
+def github_proxy(api_path):
+    """Proxy GitHub API calls. Agents call gateway:9999/github/repos/org/repo/..."""
+    token = SECRETS.get("GITHUB_TOKEN")
+    if not token:
+        return jsonify({"error": "GITHUB_TOKEN not configured"}), 500
+
+    # Enforce repo allowlist
+    if GITHUB_ALLOWED_REPOS:
+        match = re.match(r"repos/([^/]+/[^/]+)", api_path)
+        if match and match.group(1) not in GITHUB_ALLOWED_REPOS:
+            logging.warning(f"BLOCKED github access to {match.group(1)}")
+            return jsonify({"error": "repo not in allowlist"}), 403
+
+    # Block dangerous endpoints
+    if any(seg in api_path for seg in ["admin", "delete", "transfer"]):
+        logging.warning(f"BLOCKED dangerous github path: {api_path}")
+        return jsonify({"error": "endpoint blocked by policy"}), 403
+
+    resp = requests.request(
+        method=request.method,
+        url=f"https://api.github.com/{api_path}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+        },
+        params=request.args,
+        json=request.get_json(silent=True) if request.is_json else None,
+        timeout=TIMEOUT,
+    )
+    logging.info(f"github {request.method} /{api_path} -> {resp.status_code}")
+    return Response(resp.content, status=resp.status_code,
+                    content_type=resp.headers.get("content-type", "application/json"))
+
+
+# --- Jira Proxy ---
+
+@app.route("/jira/<path:api_path>", methods=["GET", "POST", "PUT"])
+def jira_proxy(api_path):
+    """Proxy Jira API calls. Agents call gateway:9999/jira/issue/PROJ-123."""
+    token = SECRETS.get("JIRA_TOKEN")
+    email = SECRETS.get("JIRA_EMAIL")
+    base_url = SECRETS.get("JIRA_URL")
+    if not all([token, email, base_url]):
+        return jsonify({"error": "Jira credentials not configured"}), 500
+
+    # Enforce project allowlist
+    if JIRA_ALLOWED_PROJECTS:
+        match = re.search(r"([A-Z][A-Z0-9]+)-\d+", api_path)
+        if match and match.group(1) not in JIRA_ALLOWED_PROJECTS:
+            logging.warning(f"BLOCKED jira access to project {match.group(1)}")
+            return jsonify({"error": "project not in allowlist"}), 403
+
+    # Block admin/user management endpoints
+    if any(seg in api_path for seg in ["admin", "user", "permissions", "role"]):
+        logging.warning(f"BLOCKED dangerous jira path: {api_path}")
+        return jsonify({"error": "endpoint blocked by policy"}), 403
+
+    # Block DELETE
+    if request.method == "DELETE":
+        logging.warning(f"BLOCKED DELETE on jira /{api_path}")
+        return jsonify({"error": "DELETE not allowed"}), 403
+
+    resp = requests.request(
+        method=request.method,
+        url=f"{base_url}/rest/api/3/{api_path}",
+        auth=(email, token),
+        params=request.args,
+        json=request.get_json(silent=True) if request.is_json else None,
+        timeout=TIMEOUT,
+    )
+    logging.info(f"jira {request.method} /{api_path} -> {resp.status_code}")
+    return Response(resp.content, status=resp.status_code,
+                    content_type=resp.headers.get("content-type", "application/json"))
+
+
+# --- Slack Proxy ---
+
+@app.route("/slack/<path:api_path>", methods=["GET", "POST"])
+def slack_proxy(api_path):
+    """Proxy Slack API calls. Agents call gateway:9999/slack/chat.postMessage."""
+    token = SECRETS.get("SLACK_TOKEN")
+    if not token:
+        return jsonify({"error": "SLACK_TOKEN not configured"}), 500
+
+    # Only allow specific safe methods
+    allowed_methods = {
+        "chat.postMessage", "chat.update",
+        "conversations.history", "conversations.list",
+        "reactions.add", "files.upload",
+    }
+    if api_path not in allowed_methods:
+        logging.warning(f"BLOCKED slack method: {api_path}")
+        return jsonify({"error": f"slack method '{api_path}' not allowed"}), 403
+
+    resp = requests.post(
+        f"https://slack.com/api/{api_path}",
+        headers={"Authorization": f"Bearer {token}"},
+        json=request.get_json(silent=True) if request.is_json else None,
+        data=request.form if not request.is_json else None,
+        timeout=TIMEOUT,
+    )
+    logging.info(f"slack {api_path} -> {resp.status_code}")
+    return Response(resp.content, status=resp.status_code,
+                    content_type=resp.headers.get("content-type", "application/json"))
+
+
+# --- Health ---
+
+@app.route("/health")
+def health():
+    services = {
+        "github": "GITHUB_TOKEN" in SECRETS,
+        "jira": all(k in SECRETS for k in ["JIRA_TOKEN", "JIRA_EMAIL", "JIRA_URL"]),
+        "slack": "SLACK_TOKEN" in SECRETS,
+    }
+    return jsonify({"status": "ok", "services": services})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=9999)
+```
+
+```dockerfile
+# gateway-sidecar/Dockerfile
+FROM python:3.12-slim
+RUN pip install flask requests
+COPY server.py /app/server.py
+WORKDIR /app
+CMD ["python", "server.py"]
+```
+
+### Docker Compose with Gateway
 
 ```yaml
 # docker-compose.yml
@@ -378,20 +579,20 @@ services:
     networks:
       - gt-net
     depends_on:
-      - secrets
+      - gateway
     restart: unless-stopped
 
-  secrets:
+  gateway:
     build:
-      context: ./secrets-sidecar
-    container_name: gt-secrets
-    # NO ports mapped to host — only accessible on gt-net
+      context: ./gateway-sidecar
+    container_name: gt-gateway
+    # NOT port-mapped to host — only reachable on gt-net
     # NO workspace volumes — can't see agent files
     volumes:
-      # Mount macOS Keychain access (read-only)
-      - /var/run/mach:/var/run/mach:ro
-      # Or mount an encrypted env file
-      - ./secrets.env:/secrets/secrets.env:ro
+      - ~/.gt-secrets/myproject.env:/secrets/secrets.env:ro
+    environment:
+      JIRA_ALLOWED_PROJECTS: "MYPROJ,BACKEND"
+      GITHUB_ALLOWED_REPOS: "myorg/myproject,myorg/shared-lib"
     networks:
       - gt-net
     restart: unless-stopped
@@ -404,164 +605,99 @@ volumes:
   gt-data:
 ```
 
-### Secrets Sidecar Implementation
+### How Agents Use the Gateway
 
-A minimal Python Flask app that reads from an encrypted env file or macOS Keychain:
-
-```python
-# secrets-sidecar/server.py
-from flask import Flask, request, jsonify
-import os
-import subprocess
-
-app = Flask(__name__)
-
-# Load secrets from encrypted env file
-SECRETS = {}
-env_file = os.environ.get("SECRETS_FILE", "/secrets/secrets.env")
-if os.path.exists(env_file):
-    with open(env_file) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                SECRETS[key.strip()] = val.strip()
-
-ALLOWED_SECRETS = set(os.environ.get("ALLOWED_SECRETS", "").split(","))
-
-@app.route("/get")
-def get_secret():
-    name = request.args.get("name", "")
-    if not name:
-        return jsonify({"error": "name parameter required"}), 400
-    if ALLOWED_SECRETS and name not in ALLOWED_SECRETS:
-        return jsonify({"error": f"secret '{name}' not in allowlist"}), 403
-    
-    # Try env file first
-    if name in SECRETS:
-        return jsonify({"value": SECRETS[name]})
-    
-    # Try macOS Keychain (if available)
-    try:
-        result = subprocess.run(
-            ["security", "find-generic-password", "-a", name, "-w"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0:
-            return jsonify({"value": result.stdout.strip()})
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    
-    return jsonify({"error": f"secret '{name}' not found"}), 404
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok", "secrets_loaded": len(SECRETS)})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=9999)
-```
-
-```dockerfile
-# secrets-sidecar/Dockerfile
-FROM python:3.12-slim
-RUN pip install flask
-COPY server.py /app/server.py
-ENV ALLOWED_SECRETS=""
-CMD ["python", "/app/server.py"]
-```
-
-### Using Secrets from GT Agents
-
-Inside the GT container, agents fetch secrets on-demand:
+Agents call the gateway instead of external APIs directly. They never see tokens:
 
 ```bash
-# Agent script or Claude command:
-export GITHUB_TOKEN=$(curl -s secrets:9999/get?name=GITHUB_TOKEN | jq -r .value)
-git push https://${GITHUB_TOKEN}@github.com/org/repo.git
+# GitHub — create a PR
+curl -s -X POST gateway:9999/github/repos/myorg/myproject/pulls \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Add dark mode","head":"feature/dark-mode","base":"main"}'
 
-# Or for one-time use (secret never stored in env):
-curl -s secrets:9999/get?name=AWS_ACCESS_KEY_ID | jq -r .value | aws configure set aws_access_key_id /dev/stdin
+# Jira — get an issue
+curl -s gateway:9999/jira/issue/MYPROJ-123
+
+# Jira — add a comment
+curl -s -X POST gateway:9999/jira/issue/MYPROJ-123/comment \
+  -H "Content-Type: application/json" \
+  -d '{"body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Fixed in PR #42"}]}]}}'
+
+# Jira — transition an issue
+curl -s -X POST gateway:9999/jira/issue/MYPROJ-123/transitions \
+  -H "Content-Type: application/json" \
+  -d '{"transition":{"id":"31"}}'
+
+# Slack — post a message
+curl -s -X POST gateway:9999/slack/chat.postMessage \
+  -H "Content-Type: application/json" \
+  -d '{"channel":"#eng-updates","text":"MYPROJ-123 deployed to staging"}'
+
+# Check which services are configured
+curl -s gateway:9999/health
 ```
 
-### Allowlisting
+### Git Push/Pull Through the Gateway
 
-The sidecar only serves secrets in the `ALLOWED_SECRETS` list:
-
-```yaml
-# docker-compose.yml
-secrets:
-  environment:
-    ALLOWED_SECRETS: "GITHUB_TOKEN,ANTHROPIC_API_KEY,NPM_TOKEN"
-```
-
-If an agent tries to fetch a secret not in the list, it gets a 403.
-
-### Why NOT to use macOS Keychain or 1Password directly
-
-If the sidecar has full access to the Keychain or 1Password vault, a compromised agent could request *any* secret — not just the ones it needs. The allowlist helps, but a misconfiguration means full vault access. The sidecar should never have more access than the agent needs.
-
-### Recommended: Sealed Secrets File (No Vault Access)
-
-The safest approach: a flat file with *only* the secrets needed for this project, encrypted at rest, mounted read-only into the sidecar. The sidecar has no connection to any broader secrets store.
+For git operations, agents can use the GitHub API to create PRs, but `git push` needs a token in the URL. One option: a thin git credential helper inside the GT container that fetches from the gateway:
 
 ```bash
-# On the host, create a secrets file for this project
-mkdir -p ~/.gt-secrets
-
-# Add only the secrets this project needs
-cat > ~/.gt-secrets/myproject.env << 'EOF'
-GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-NPM_TOKEN=npm_xxxxxxxxxxxx
-EOF
-
-# Lock down permissions
-chmod 600 ~/.gt-secrets/myproject.env
+# Inside GT container: /usr/local/bin/git-credential-gateway
+#!/bin/bash
+# Git calls this to get credentials for push/pull
+if [[ "$1" == "get" ]]; then
+    TOKEN=$(curl -s gateway:9999/github/internal/token 2>/dev/null | jq -r .value)
+    echo "protocol=https"
+    echo "host=github.com"
+    echo "username=x-access-token"
+    echo "password=${TOKEN}"
+fi
 ```
 
-The sidecar reads *only* this file. It has no access to Keychain, 1Password, `~/.ssh`, `~/.aws`, or anything else. If an agent compromises the sidecar, they get only the secrets you explicitly put in that file — nothing more.
+Add a `/github/internal/token` endpoint to the gateway that returns the raw token — but only for git operations, and rate-limited to prevent abuse. This is the one place where the token is exposed, but it stays inside the Docker network and never reaches the host.
 
-```yaml
-# docker-compose.yml — secrets sidecar
-secrets:
-  build:
-    context: ./secrets-sidecar
-  volumes:
-    # ONLY this project's secrets file — nothing else
-    - ~/.gt-secrets/myproject.env:/secrets/secrets.env:ro
-  networks:
-    - gt-net
-```
+### Adding a New Service
 
-**Per-rig secrets:** Create separate env files per project. Only mount the relevant one:
+To proxy a new API (e.g., PagerDuty, Datadog, Confluence):
 
-```bash
-~/.gt-secrets/
-├── frontend.env      # GITHUB_TOKEN for frontend repo
-├── backend.env       # GITHUB_TOKEN + DB_PASSWORD for backend
-└── infra.env         # AWS keys for infra rig
-```
+1. Add the token to `~/.gt-secrets/myproject.env`
+2. Add a route in `server.py` with path/method restrictions
+3. Restart the gateway: `docker compose restart gateway`
+
+The pattern is always the same: proxy the request, inject the auth, enforce allowlists, log everything.
 
 ### Rotating Secrets
 
-When you rotate a token:
-1. Update the `.env` file on the host
-2. Restart the sidecar: `docker compose restart secrets`
+1. Update `~/.gt-secrets/myproject.env` on the host
+2. `docker compose restart gateway`
 
-The GT container doesn't need to restart — next secret fetch gets the new value.
+GT container doesn't need to restart.
+
+### Audit Log
+
+The gateway logs every proxied call with timestamp, service, method, path, and status code:
+
+```
+2026-04-03 15:32:01 github GET /repos/myorg/myproject/pulls -> 200
+2026-04-03 15:32:05 jira POST /issue/MYPROJ-123/comment -> 201
+2026-04-03 15:32:08 slack chat.postMessage -> 200
+2026-04-03 15:32:10 BLOCKED jira access to project SECRETS
+2026-04-03 15:32:12 BLOCKED DELETE on jira /issue/MYPROJ-456
+```
 
 ### Security Properties
 
 | Property | How |
 |----------|-----|
-| Agents can't access unlisted secrets | Sidecar only has a flat file with explicit secrets |
-| No access to Keychain/1Password/SSH | Sidecar has no vault connection or host access |
-| Agents can't enumerate secrets | Sidecar only serves by exact name match |
+| Agents never see raw tokens | Gateway proxies all API calls, injects auth server-side |
+| No access to Keychain/1Password/SSH | Gateway reads only a sealed per-project env file |
+| Agents can't access other projects | Project allowlists enforced per-service |
+| Destructive operations blocked | DELETE and admin endpoints rejected by policy |
 | Blast radius is one project | Per-rig env files limit exposure |
-| Secrets not in GT environment | Fetched on-demand via HTTP, not injected at startup |
-| Sidecar can't see agent files | No workspace volumes mounted |
-| Sidecar not reachable from internet | Only on internal `gt-net` network |
+| Gateway can't see agent files | No workspace volumes mounted on gateway |
+| Gateway not reachable from internet | Only on internal `gt-net` network |
 | docker.sock not exposed | Neither container has it |
+| Full audit trail | Every proxied call is logged with method, path, status |
 
 ---
 
