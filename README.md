@@ -109,6 +109,79 @@ graph TD
 
 **Why this matters with 30 agents:** Without a merge queue, agents would constantly break each other's work. The Refinery guarantees that `main` is always green. When a batch fails, bisecting pinpoints exactly which PR is the culprit — no human investigation needed.
 
+#### Full Lifecycle: What Happens When PRs Fail?
+
+The flowchart above shows bisection, but the real question is: what happens to the broken PR? Who fixes it, how does it get retested, and what if *multiple* PRs fail? Here's the full sequence:
+
+```mermaid
+sequenceDiagram
+    participant P1 as Polecat 1
+    participant P2 as Polecat 2
+    participant P3 as Polecat 3
+    participant MQ as Merge Queue
+    participant R as Refinery
+    participant M as Main Branch
+    participant W as Witness
+
+    Note over P1,P3: All 3 agents finish work
+    P1->>MQ: gt done (PR #101)
+    P2->>MQ: gt done (PR #102)
+    P3->>MQ: gt done (PR #103)
+
+    MQ->>R: Batch: 101 + 102 + 103
+    R->>R: Test batch together
+    R-->>R: FAIL!
+
+    Note over R: Bisect phase begins
+    R->>R: Test 101 + 102
+    R-->>R: FAIL!
+    R->>R: Test 101 alone
+    R-->>R: PASS ✓
+    Note over R: → PR #102 is broken
+
+    R->>R: Test 103 alone
+    R-->>R: FAIL!
+    Note over R: → PR #103 is also broken
+
+    Note over R: Two failures found
+    R->>MQ: Reject PR #102 (reason: test failure)
+    R->>MQ: Reject PR #103 (reason: test failure)
+    R->>M: Merge PR #101 ✓
+
+    Note over MQ,W: Notify agents via mail system
+    MQ->>W: Notify: PR #102 rejected
+    MQ->>W: Notify: PR #103 rejected
+    W->>P2: Mail: "PR #102 failed tests. Fix and resubmit."
+    W->>P3: Mail: "PR #103 failed tests. Fix and resubmit."
+
+    Note over P2,P3: Agents fix their work
+    P2->>P2: Read failure logs, fix code
+    P3->>P3: Read failure logs, fix code
+    P2->>MQ: gt done (PR #102 v2)
+    P3->>MQ: gt done (PR #103 v2)
+
+    MQ->>R: Batch: 102v2 + 103v2
+    R->>R: Test batch together
+    R-->>R: PASS ✓
+    R->>M: Merge both ✓
+
+    Note over M: Main is always green 🟢
+```
+
+**Key points about failure handling:**
+
+1. **The Refinery identifies ALL broken PRs** — not just the first one. Bisection continues until every PR in the batch is classified as pass or fail.
+
+2. **Broken PRs go back to their polecat** — via Gas Town's mail system. The Witness (per-rig health monitor) delivers the rejection notice with test failure logs.
+
+3. **The polecat fixes its own work** — it reads the failure logs, patches the code, and resubmits with `gt done`. No human involved.
+
+4. **Passing PRs merge immediately** — PR #101 doesn't wait for #102 and #103 to get fixed. It merges as soon as the Refinery confirms it's clean.
+
+5. **Fixed PRs enter the next batch** — they go back into the queue and get tested again (possibly alongside new work from other agents).
+
+6. **If a polecat can't fix it** — the Witness escalates to the Deacon, which may reassign the work to a different polecat or escalate to a human via the escalation system.
+
 ### Workflow Primitives
 
 - **Formulas** — TOML-defined workflow templates for multi-step processes
