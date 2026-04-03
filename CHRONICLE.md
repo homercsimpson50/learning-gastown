@@ -192,8 +192,6 @@ The vision: tell the Mayor "build me a MenuGen" and it orchestrates 10+ polecats
 
 ---
 
----
-
 ## How to Interact with Gas Town (and Where Claude Code Fits)
 
 After getting everything running, the natural question: **should you use Gas Town inside Claude Code, or separately?**

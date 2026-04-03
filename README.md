@@ -2,7 +2,27 @@
 
 A deep dive into [Gas Town](https://github.com/gastownhall/gastown) and [Beads](https://github.com/gastownhall/beads) — Steve Yegge's multi-agent orchestration framework and its companion distributed issue tracker.
 
-This repo documents what I learned by exploring the codebases, reading the source, and building them from scratch.
+This repo documents what I learned by exploring the codebases, reading the source, and building them from scratch. See also the [Chronicle](CHRONICLE.md) for the full day-by-day build log.
+
+### Table of Contents
+
+- [What is Gas Town?](#what-is-gas-town)
+- [What is Beads?](#what-is-beads)
+- [The Journey from "Clown Show" to v1.0](#the-journey-from-clown-show-to-v10)
+- [Gas Town Architecture](#gas-town-architecture)
+  - [The Cast of Characters](#the-cast-of-characters)
+  - [The Refinery: Merge Queue](#the-refinery-bors-style-bisecting-merge-queue)
+  - [Workflow Primitives](#workflow-primitives)
+- [Beads Architecture](#beads-architecture)
+  - [Hash-based IDs (with example)](#example-why-sequential-ids-break-with-multiple-agents)
+  - [Cell-level Merge (with example)](#example-cell-level-merge-vs-line-level-merge)
+- [How to Build Gas Town](#how-to-build-gas-town)
+- [How to Build Beads](#how-to-build-beads)
+- [How to Use Gas Town (Day-to-Day)](#how-to-use-gas-town-day-to-day)
+- [Monitoring & Dashboards](#monitoring--dashboards)
+- [Design Philosophy](#design-philosophy)
+- [What I Found Most Interesting](#what-i-found-most-interesting)
+- [Resources](#resources)
 
 ---
 
@@ -490,6 +510,55 @@ gt feed                          # Real-time activity dashboard (TUI)
 
 ---
 
+## Monitoring & Dashboards
+
+Gas Town provides three ways to see what's happening. There's no Electron/desktop app — it's terminal-first by design.
+
+### `gt feed` — Interactive TUI (Best for Daily Use)
+
+A full terminal dashboard built with [Bubbletea](https://github.com/charmbracelet/bubbletea):
+
+| Panel | Shows |
+|-------|-------|
+| **Agent tree** (top) | All agents by role with latest activity |
+| **Convoy panel** (middle) | In-progress and recently landed work batches |
+| **Event stream** (bottom) | Scrollable chronological event feed |
+
+Navigation: `j/k` scroll, `tab` switch panels, `1/2/3` jump to panel, `q` quit.
+
+The **problems view** (`gt feed -p`) is especially useful — it surfaces stuck agents and GUPP violations (hooked work + 30 min no progress). Keyboard actions: `Enter` = attach, `n` = nudge, `h` = handoff.
+
+```
+Event symbols:
+  +  created     →  in_progress    ✓  completed    ✗  failed
+  🦉 patrol      ⚡ nudged         🎯 sling        🤝 handoff
+
+Agent state (problems view):
+  🔥 GUPP violation (critical)     ⚠  STALLED     ●  Working
+  ○  Idle                          💀 Zombie
+```
+
+### `gt dashboard --open` — Web UI (Best for Overview)
+
+A browser-based dashboard at `http://localhost:8080` called the **"Gas Town Control Center"**:
+
+- Convoy list with status indicators and progress tracking
+- Activity health indicators (green/yellow/red)
+- Auto-refreshes every 30s via htmx + SSE for real-time updates
+- Command palette via `Cmd+K`
+
+```bash
+gt dashboard --open              # Start and open browser
+gt dashboard --port 3000         # Custom port
+gt dashboard --bind 0.0.0.0      # Listen on all interfaces
+```
+
+### `gt vitals` — Quick Health Snapshot
+
+One-shot terminal output of unified system health. Good for scripting or quick checks.
+
+---
+
 ## Key Dependencies
 
 ### Gas Town
@@ -523,6 +592,41 @@ gt feed                          # Real-time activity dashboard (TUI)
 5. **Zero Framework Cognition** — The Go code is deliberately "dumb" — it handles plumbing, not thinking. All intelligence lives in the AI agents themselves. This is a bet that models will keep getting smarter, so don't bake in today's heuristics.
 
 6. **Wasteland federation** — Gas Towns can federate work across organizations via DoltHub. This is infrastructure for a future where AI agents collaborate across company boundaries.
+
+---
+
+## End-to-End Setup on macOS (What We Actually Did)
+
+We built everything from scratch on a Mac. Here's the real timing:
+
+| Step | Command | Time |
+|------|---------|------|
+| Install prerequisites | `brew install go tmux dolt` | ~3 min |
+| Clone + build Beads | `git clone ... && make install` | ~2 min |
+| Clone + build Gas Town | `git clone ... && make install` | ~2 min |
+| Create HQ | `gt install ~/gt --name homer-town` | ~10 sec |
+| Add rig | `gt rig add gastown https://github.com/gastownhall/gastown` | **~70 min** |
+| Start services | `gt up` | ~30 sec |
+| **Total** | | **~78 min** |
+
+The rig add is by far the longest step — it syncs the upstream Dolt data (beads history), which involves downloading and indexing large pack files. For repos without existing Dolt histories, this would be much faster.
+
+**Final state after setup:**
+
+```
+$ gt status
+Town: homer-town (/Users/homer/gt)
+👤 Overseer: Homer Simpson
+
+Services: dolt (PID ..., :3307)  tmux (4 sessions)
+
+🎩 mayor        ● [claude]
+🐺 deacon       ● [claude]
+
+─── gastown/ ─────────────────────
+🦉 witness      ● [claude]
+🏭 refinery     ● [claude]
+```
 
 ---
 
