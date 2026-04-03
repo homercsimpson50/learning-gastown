@@ -246,6 +246,31 @@ But for orchestrating multiple agents on a real project — that's Gas Town's jo
 
 ---
 
+## Visual Interfaces for Monitoring Gas Town
+
+Gas Town has three ways to see what's happening:
+
+### 1. `gt feed` — Interactive TUI (Best for Daily Use)
+A full terminal dashboard built with Bubbletea. Three panels:
+- **Agent tree** (top) — all agents by role with latest activity
+- **Convoy panel** (middle) — in-progress work batches
+- **Event stream** (bottom) — scrollable chronological feed
+
+Has vim-style navigation (j/k, tab, q). The **problems view** (`gt feed -p`) is especially useful — it surfaces stuck agents, GUPP violations (hooked work + 30 min no progress), and lets you nudge or handoff directly with keyboard shortcuts.
+
+### 2. `gt dashboard --open` — Web UI (Best for Overview)
+A real web dashboard at `http://localhost:8080` called the **"Gas Town Control Center"**. Uses htmx for auto-refresh (every 30s) and SSE for real-time updates. Has a command palette (Cmd+K). Shows convoy tracking with progress and health indicators (green/yellow/red).
+
+This is the only browser-based GUI — everything else is terminal.
+
+### 3. `gt vitals` — Quick Health Check
+One-shot terminal output of unified system health.
+
+### What's NOT Available
+There's no Electron app, no desktop GUI, no mobile app. Gas Town is terminal-first by design — consistent with the ZFC philosophy (the Go code handles transport, not presentation).
+
+---
+
 ## Setup Summary: Total Time & Steps
 
 | Step | Time | Notes |
