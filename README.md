@@ -438,6 +438,58 @@ Bet on models getting smarter rather than building elaborate hand-crafted heuris
 
 ---
 
+## How to Use Gas Town (Day-to-Day)
+
+Gas Town runs **outside** your IDE/editor. It's an orchestrator that manages Claude Code (and other agent) sessions via tmux. You interact with it from a regular terminal.
+
+### Quick Start After Install
+
+```bash
+cd ~/gt                          # Go to your town root
+
+gt status                        # See what's running
+gt mayor attach                  # Talk to the Mayor (your AI concierge)
+gt feed                          # Real-time activity dashboard (TUI)
+```
+
+### Common Commands
+
+| Task | Command | What happens |
+|------|---------|-------------|
+| **Start everything** | `gt up` | Starts Dolt, Daemon, Mayor, Deacon, Witnesses, Refineries |
+| **Check status** | `gt status` | Shows all services and agent states |
+| **Talk to Mayor** | `gt mayor attach` | Opens Mayor's tmux session — ask it to do things |
+| **Assign work** | `gt sling "add dark mode"` | Creates a bead and dispatches a polecat to do it |
+| **Watch activity** | `gt feed` | Live TUI showing agent events across all rigs |
+| **See ready work** | `gt ready` | PRs that passed the Refinery and are ready to merge |
+| **Check health** | `gt health` | Dolt server, DB stats, zombie processes |
+| **Full diagnostics** | `gt doctor` | 30+ health checks |
+| **Agent messages** | `gt mail` | Inter-agent mail system |
+| **View changelog** | `gt changelog` | Completed work across rigs |
+| **Stop everything** | `gt down` | Gracefully stops all services |
+
+### Typical Workflow
+
+1. **Open a terminal** and `cd ~/gt`
+2. **`gt up`** — start services (idempotent, safe to run multiple times)
+3. **`gt mayor attach`** — tell the Mayor what you want built
+4. The Mayor breaks work into beads, dispatches polecats
+5. **`gt feed`** — watch agents work in real-time
+6. **`gt ready`** — review completed work
+7. Polecats push to the Refinery merge queue automatically
+8. The Refinery tests, bisects failures, merges clean PRs to main
+
+### Where Gas Town vs Claude Code
+
+| Use Gas Town when... | Use Claude Code directly when... |
+|---------------------|--------------------------------|
+| Coordinating multiple agents | Quick one-off tasks |
+| Long-running projects | Exploring/learning a codebase |
+| Work that needs merge queue safety | Simple bug fixes |
+| You want the Mayor to manage complexity | You want direct control |
+
+---
+
 ## Key Dependencies
 
 ### Gas Town

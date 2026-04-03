@@ -194,6 +194,58 @@ The vision: tell the Mayor "build me a MenuGen" and it orchestrates 10+ polecats
 
 ---
 
+## How to Interact with Gas Town (and Where Claude Code Fits)
+
+After getting everything running, the natural question: **should you use Gas Town inside Claude Code, or separately?**
+
+### The Answer: Gas Town lives *outside* Claude Code
+
+Gas Town **manages** Claude Code instances — it's a layer above. Here's how the pieces fit:
+
+```
+You (human)
+  └── gt CLI (terminal)           ← You interact here
+       └── Mayor (Claude Code)    ← Gas Town spawns this
+            ├── Polecat 1 (Claude Code session in tmux)
+            ├── Polecat 2 (Claude Code session in tmux)
+            ├── Polecat 3 (Codex CLI session in tmux)
+            └── ...
+```
+
+**Gas Town is the orchestrator. Claude Code is one of the runtimes it orchestrates.**
+
+### How to interact
+
+| What you want | Where to do it |
+|--------------|----------------|
+| Talk to the Mayor | `gt mayor attach` (from `~/gt`) — opens tmux session |
+| Check status | `gt status` — see all running agents |
+| Assign work | `gt sling "fix the auth bug"` — dispatches to a polecat |
+| Watch activity | `gt feed` — real-time TUI dashboard |
+| Check health | `gt health` / `gt vitals` |
+| See what's ready | `gt ready` — work ready for merge |
+| Read agent mail | `gt mail` — inter-agent messages |
+
+### Key insight: tmux is the UI
+
+Gas Town uses **tmux** as its multiplexer. Each agent (Mayor, Deacon, Witnesses, Polecats) runs in its own tmux session. You can:
+- `gt mayor attach` — attach to the Mayor's session
+- `gt deacon attach` — attach to the Deacon
+- `gt session list` — see all sessions
+
+This means Gas Town works best in a **regular terminal**, not inside an IDE or Claude Code session. Open a terminal, `cd ~/gt`, and use the `gt` CLI.
+
+### Where Claude Code still fits
+
+You'd still use Claude Code directly for:
+- Working on your learning repo (like this one)
+- Quick one-off tasks that don't need multi-agent coordination
+- Being a crew member inside a rig (Gas Town can spawn Claude Code as your personal workspace)
+
+But for orchestrating multiple agents on a real project — that's Gas Town's job.
+
+---
+
 ## Setup Summary: Total Time & Steps
 
 | Step | Time | Notes |
