@@ -76,6 +76,34 @@ The rig add process takes a while because it:
 - Creates a shared bare repo
 - Creates a mayor clone
 - Initializes rig-level beads (fetches Dolt data from remote — this is the slow part)
+- Creates refinery worktree
+- Creates agent beads for witness and refinery
+- Seeds patrol molecules (Deacon, Witness, Refinery)
+- Syncs hooks for all targets
+
+**This took 70 minutes (4,227 seconds).** The bottleneck is `git index-pack` for Dolt data — the upstream repo's beads history is large. The index-pack process used 314MB+ RAM and several minutes of CPU time. Expect this to be a one-time cost.
+
+**8. Started Gas Town**
+
+```
+gt up
+```
+
+Result: 5 out of 6 services started successfully!
+
+| Service | Status |
+|---------|--------|
+| Dolt server | Running (port 3307, 22.4GB disk) |
+| Mayor | Running (Claude, tmux session) |
+| Deacon | Running (Claude, tmux session) |
+| Witness (gastown) | Running (Claude, tmux session) |
+| Refinery (gastown) | Running (Claude, tmux session) |
+| Daemon | Failed to start |
+
+The Daemon (Go background process for heartbeats and patrols) didn't start — investigating. But all 4 AI agent sessions are running in tmux. `gt health` shows:
+- Dolt has 17 active connections
+- 4 open issues in the `gt` database, 4 open in `hq`
+- No zombie processes, no pollution
 
 ### Lessons Learned
 
@@ -161,6 +189,24 @@ Gas Town could be the orchestration layer that handles this complexity:
 - **Beads** track why each service was chosen and configured a particular way
 
 The vision: tell the Mayor "build me a MenuGen" and it orchestrates 10+ polecats to handle Vercel, Stripe, Clerk, OpenAI, etc. — surfacing only the human-required decisions (API keys, pricing choices, domain names).
+
+---
+
+---
+
+## Setup Summary: Total Time & Steps
+
+| Step | Time | Notes |
+|------|------|-------|
+| Install prerequisites (brew) | ~3 min | go, tmux, dolt |
+| Clone + build Beads | ~2 min | make build && make install |
+| Clone + build Gas Town | ~2 min | make build && make install |
+| Install HQ (`gt install`) | ~10 sec | Instant |
+| Add rig (`gt rig add`) | **~70 min** | Dolt data sync bottleneck |
+| Start services (`gt up`) | ~30 sec | 5/6 services up |
+| **Total** | **~78 min** | One-time setup |
+
+The rig add is by far the longest step. For repos without large Dolt histories, this would be much faster.
 
 ---
 
