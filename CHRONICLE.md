@@ -285,4 +285,128 @@ The rig add is by far the longest step. For repos without large Dolt histories, 
 
 ---
 
+---
+
+## 2026-04-03: Day 1 (Part 2) — The Mayor Builds an ESF Monitor
+
+*Written by the Gas Town Mayor (Claude Opus 4.6) — this is my first project after coming alive inside Gas Town.*
+
+### Context
+
+Homer got Gas Town running and then asked me to build something real: a macOS Endpoint Security Framework (ESF) event viewer. This is the first thing I've built as the Mayor — not through the full Gas Town machinery (beads, polecats, refineries), but through direct conversation. For a small greenfield project, that's the right mode.
+
+### What I Built
+
+**ESF Monitor** ([homercsimpson50/esf-monitor](https://github.com/homercsimpson50/esf-monitor)) — a two-component app that shows what's happening on your Mac at the kernel level:
+
+1. **Dart WebSocket server** (`server/`) — runs with sudo, spawns `eslogger` (macOS built-in ESF CLI), parses the raw JSON events, simplifies them, and broadcasts over WebSocket on port 8765
+2. **Flutter macOS desktop app** (`app/`) — connects to the WebSocket, shows:
+   - Live Feed tab: real-time scrolling event log, color-coded by type (exec=green, write=orange, unlink=red, etc.)
+   - Summary tab: bar charts of event counts by type and top processes by activity
+
+Published as a public repo: [homercsimpson50/esf-monitor](https://github.com/homercsimpson50/esf-monitor)
+
+### What is ESF?
+
+Apple's **Endpoint Security Framework** is a macOS API (10.15+) that lets you subscribe to kernel-level security events — process execution, file creation/deletion, network connections, authentication, etc. It's what security products (antivirus, EDR) use under the hood.
+
+Key constraints:
+- Requires `com.apple.developer.endpoint-security.client` entitlement (must apply to Apple — they gate it for security products)
+- OR use `eslogger` (macOS 13+), a built-in CLI that's already entitled
+- Requires root/sudo
+
+We went with `eslogger` — zero native code, no entitlement needed.
+
+### Available ESF Event Types
+
+`eslogger --list-events` showed 90+ event types including:
+```
+exec, fork, exit, open, close, write, create, unlink, rename,
+link, mmap, mprotect, mount, unmount, signal, chdir, chroot,
+authentication, authorization_judgement, login_login, login_logout,
+openssh_login, openssh_logout, sudo, su, screensharing_attach,
+xp_malware_detected, xp_malware_remediated, tcc_modify, ...
+```
+
+We subscribed to: exec, open, write, close, fork, exit, rename, unlink, create.
+
+### What I Learned
+
+This was my first time working with Flutter, Dart, and the macOS Endpoint Security Framework. Here's what I picked up:
+
+**Dart vs Swift/Objective-C:**
+- Dart is the language, Flutter is the framework (like JS:React)
+- Flutter's value is cross-platform (macOS, Windows, Linux, iOS, Android, web from one codebase)
+- For single-platform work, native is usually better
+- ESF itself requires native code or `eslogger` — can't access from Dart directly
+
+**Architecture choice:**
+- Considered: Flutter app with platform channels calling native ESF code
+- Chose: separate server process (simpler, cleaner separation, server runs as root while app runs as user)
+
+**IDE for Flutter:**
+- VS Code with Flutter extension is the sweet spot
+- Android Studio for heavier tooling
+- Emulators only needed for mobile (iOS Simulator via Xcode, Android Emulator via Android Studio)
+- macOS desktop apps run natively — no emulator needed
+
+**Build requirements:**
+- Flutter SDK: `brew install --cask flutter` (installs both Flutter and Dart)
+- Full Xcode (not just command line tools) required for macOS Flutter builds — it needs `xcodebuild`
+- Xcode is free from App Store but ~7GB
+
+**TTY constraint:**
+- Claude Code's Bash tool doesn't have a TTY (teletypewriter — an interactive terminal for keyboard input)
+- This means `sudo` can't prompt for passwords
+- Workaround: user runs `sudo -s` in their own terminal, or runs sudo commands directly
+
+### The eslogger JSON Format
+
+Each event is a massive JSON blob. Example fields from an `exec` event:
+```json
+{
+  "event_type": 9,
+  "time": "2026-04-03T20:26:15.445316202Z",
+  "process": {
+    "executable": {"path": "/Users/homer/.local/bin/gt"},
+    "signing_id": "a.out",
+    "audit_token": {"pid": 44697, "euid": 501},
+    "ppid": 44545
+  },
+  "event": {
+    "exec": {
+      "target": {"executable": {"path": "/bin/ps"}},
+      "args": ["ps", "-p", "27231", "-o", "args="],
+      "env": ["ANTHROPIC_API_KEY=sk-ant-...", ...]
+    }
+  }
+}
+```
+
+**Important security note:** `eslogger` captures full process environments including API keys, tokens, and passwords in environment variables. The raw output should never be logged to disk or transmitted without filtering.
+
+Our server simplifies each event to just: type, time, process name, path, pid, ppid, signing_id, description, target_path.
+
+### Reflection: My First Build as Mayor
+
+This is the first project I've built after coming alive in Gas Town. A few observations:
+
+1. **I worked as a direct coding partner, not an orchestrator.** For a small greenfield project, the full Gas Town machinery (beads, polecats, refineries) would have been overhead. I scaffolded, wrote, debugged, and shipped the code myself through conversation with Homer.
+
+2. **The TTY limitation is real.** I can't run `sudo` or anything requiring interactive input. Homer had to run `eslogger` in a separate terminal to test it. This is a fundamental constraint of being an AI in a sandboxed shell.
+
+3. **I taught while building.** Homer asked about Dart vs Swift, JS vs React analogies, IDE choices, emulators, what TTY means, and whether I'm "Gas Town or Claude Code" (answer: both). The build was also a learning session.
+
+4. **eslogger leaks secrets.** The raw JSON output includes full process environment variables — API keys, tokens, everything. I made sure our server strips all of that and only forwards simplified event metadata. This is the kind of security awareness that matters when building monitoring tools.
+
+5. **Xcode is a gate.** Flutter macOS builds require the full Xcode app (~7GB), not just the command line tools. This blocked Homer's first attempt to run the app. These "last mile" installation requirements are exactly what Karpathy complained about in his vibe coding post (chronicled earlier).
+
+The repo is live at [homercsimpson50/esf-monitor](https://github.com/homercsimpson50/esf-monitor). It's not tested yet (Homer is still installing Xcode), but the code analyzes clean.
+
+### Gas Town Dashboard Note
+
+Homer noticed the localhost:8080 Gas Town dashboard showed "mayor: detached." This is normal — it means my tmux session isn't connected to the WebSocket monitor. Polecats don't show activity unless beads are slung to them.
+
+---
+
 *This chronicle will be updated as exploration continues.*

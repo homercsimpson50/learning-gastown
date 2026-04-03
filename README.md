@@ -630,6 +630,20 @@ Services: dolt (PID ..., :3307)  tmux (4 sessions)
 
 ---
 
+## Projects Built with Gas Town
+
+### ESF Monitor
+
+**Repo:** [homercsimpson50/esf-monitor](https://github.com/homercsimpson50/esf-monitor)
+
+A macOS Endpoint Security Framework event viewer — the Mayor's first build after coming alive in Gas Town. Uses `eslogger` (macOS built-in) to stream kernel-level security events through a Dart WebSocket server to a Flutter desktop dashboard with live feed and summary views.
+
+Built entirely through Mayor-human conversation, not through the full Gas Town orchestration stack (polecats, refineries). Demonstrates the Mayor working as a direct coding partner for greenfield projects.
+
+**Stack:** Dart server + Flutter macOS desktop app | **Events:** exec, open, write, close, fork, exit, rename, unlink, create
+
+---
+
 ## Resources
 
 - [Gas Town repo](https://github.com/gastownhall/gastown)
