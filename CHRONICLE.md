@@ -409,4 +409,78 @@ Homer noticed the localhost:8080 Gas Town dashboard showed "mayor: detached." Th
 
 ---
 
+## 2026-04-03: Day 1 (Part 3) — Containerizing Gas Town for Work Laptops
+
+*Written by the Gas Town Mayor (Claude Opus 4.6)*
+
+### The Problem
+
+Gas Town runs agents with `--dangerously-skip-permissions`. On Homer's loaner laptop, that's acceptable. On a work machine with corporate VPN access, SSH keys to production, AWS credentials, and Slack tokens — a rogue polecat could cause real damage. It can read `~/.ssh`, `~/.aws`, browser profiles, anything on the host filesystem.
+
+Homer asked: how do I run Gas Town in containers so I get the same experience (dashboard, TUI, Mayor) but agents can't touch the host?
+
+### The Solution
+
+I wrote a full containerization guide: [guides/containerized-gastown.md](guides/containerized-gastown.md)
+
+The architecture:
+
+```
+Work Laptop (host)
+  ├── Browser → localhost:8080  (Dashboard — still works)
+  ├── Terminal → docker exec -it gastown gt feed  (TUI — still works)
+  ├── IDE → edits rig repos directly (bind-mounted)
+  │
+  └── Docker Container
+       ├── gt, bd, tmux, dolt, claude  (all pre-built in image)
+       ├── /home/gt/  (town data — persistent Docker volume)
+       ├── rig repos  (bind-mounted from host, agents can read/write)
+       └── ~/.claude   (subscription auth — read-only mount)
+```
+
+Key design decisions:
+
+1. **Pre-built image** — Go, Dolt, tmux, Claude Code, gt, bd all compiled into a ~2GB Docker image. Container startup is instant. No waiting for builds.
+
+2. **Persistent volume for town data** — `gt-data` Docker volume holds the entire `~/gt` directory (mayor configs, beads DB, rig state). Survives container restarts and rebuilds.
+
+3. **Bind-mounted rig repos** — Project code lives on the host so you can edit in your IDE. Agents inside the container read/write the same files. This is the bridge between containerized agents and your local dev workflow.
+
+4. **Read-only auth mount** — `~/.claude` is mounted read-only. Agents can authenticate with your Pro/Max subscription but can't steal or modify the credentials.
+
+5. **Port-mapped dashboard** — `localhost:8080` maps into the container. The browser dashboard works identically to bare-metal.
+
+### What Agents Can vs Can't Do
+
+| Inside container (CAN) | On host (CANNOT) |
+|------------------------|------------------|
+| Read/write mounted rig repos | Access `~/.ssh`, `~/.aws` |
+| Execute any shell command | Kill host processes |
+| Install packages | Read browser data |
+| Git push/pull | Modify Claude auth |
+| Access Dolt, tmux | Access Docker daemon |
+
+### What I Learned Writing This
+
+1. **The blast radius problem is real.** `--dangerously-skip-permissions` means what it says. In a corporate environment, a single agent running `cat ~/.ssh/id_rsa` or `aws sts get-caller-identity` could be a security incident. Containers are the right mitigation.
+
+2. **Docker Compose makes it ergonomic.** Without compose, the `docker run` command for Gas Town would be 15+ flags. Compose files make it declarative and repeatable.
+
+3. **Git auth inside containers is the hard part.** The agents need to push/pull from GitHub. Options: GitHub CLI (`gh auth login` inside container), mount git-credentials read-only, or scoped deploy keys. Each has tradeoffs.
+
+4. **The experience is nearly identical.** The only difference from bare-metal is prefixing commands with `docker exec -it gastown`. Shell aliases (`gtmayor`, `gtfeed`) eliminate even that.
+
+5. **This pattern generalizes.** The onion-claude project (also improved today) uses the same approach — Docker isolation + bind-mounted workspace + subscription auth. It's becoming a pattern: dangerous AI permissions + container isolation + read-only auth.
+
+### Also Today: Improved onion-claude
+
+Reviewed and improved [homercsimpson50/onion-claude](https://github.com/homercsimpson50/onion-claude):
+
+- **Switched from API key to subscription auth** — same pattern as the containerized GT guide. Mounts `~/.claude` read-only so Claude Code uses Pro/Max subscription instead of per-token API billing.
+- **Added disclaimers** — dangerous permissions, Tor legality, breach-check ethics.
+- **Hardened code** — request timeouts (15s), input validation, rate limit handling, generic User-Agent, stricter bash error handling.
+- **Added Tor usage instructions** — architecture diagram, commands, troubleshooting.
+
+---
+
 *This chronicle will be updated as exploration continues.*
