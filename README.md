@@ -61,7 +61,7 @@ Gas Town uses a rich domain vocabulary. Here's the hierarchy:
 | **Witness** | Per-rig lifecycle manager monitoring polecats |
 | **Deacon** | Cross-rig background supervisor running patrol cycles |
 | **Dogs** | Infrastructure workers for maintenance tasks |
-| **Refinery** | Per-rig Bors-style bisecting merge queue |
+| **Refinery** | Per-rig Bors-style bisecting merge queue (see diagram below) |
 | **Seance** | Session discovery/continuation via `.events.jsonl` logs |
 | **Wasteland** | Federated work coordination network linking Gas Towns via DoltHub |
 | **Scheduler** | Config-driven capacity governor preventing API rate limit exhaustion |
@@ -75,6 +75,39 @@ Daemon (Go process)
             ├── Witnesses (per-rig)
             └── Refineries (per-rig)
 ```
+
+### The Refinery: Bors-Style Bisecting Merge Queue
+
+Agents never push directly to `main`. Instead, the **Refinery** batches completed work and tests it before merging. If a batch fails, it bisects to find the broken PR — just like [Bors](https://bors.tech/).
+
+```mermaid
+graph TD
+    subgraph "Agent Work"
+        A1[Polecat 1: PR #101] -->|gt done| Q
+        A2[Polecat 2: PR #102] -->|gt done| Q
+        A3[Polecat 3: PR #103] -->|gt done| Q
+        A4[Polecat 4: PR #104] -->|gt done| Q
+    end
+
+    Q[Merge Queue] -->|Batch 1: PRs 101+102+103+104| B1
+
+    subgraph "Refinery Processing"
+        B1{Test batch<br/>101+102+103+104} -->|PASS| M[Merge all to main]
+        B1 -->|FAIL| B2{Bisect: test<br/>101+102}
+        B2 -->|PASS| B3{Test 103+104}
+        B2 -->|FAIL| B4{Test 101 alone}
+        B3 -->|FAIL| B5{Test 103 alone}
+        B4 -->|PASS| FOUND1[PR 102 broke the build]
+        B4 -->|FAIL| FOUND2[PR 101 broke the build]
+        B5 -->|PASS| FOUND3[PR 104 broke the build]
+        B5 -->|FAIL| FOUND4[PR 103 broke the build]
+    end
+
+    FOUND1 -->|Reject & notify| A2
+    M -->|main updated| DONE[Clean main branch]
+```
+
+**Why this matters with 30 agents:** Without a merge queue, agents would constantly break each other's work. The Refinery guarantees that `main` is always green. When a batch fails, bisecting pinpoints exactly which PR is the culprit — no human investigation needed.
 
 ### Workflow Primitives
 
@@ -103,6 +136,54 @@ Daemon (Go process)
 - **Event-driven FlushManager** with single-owner pattern — channels instead of mutexes eliminates race conditions
 - **Cell-level merge** (via Dolt) — two agents can update different fields of the same issue without conflict
 - **Dolt branching** is independent of git branches, enabling isolated workstreams
+
+#### Example: Why Sequential IDs Break with Multiple Agents
+
+Imagine 3 agents working in parallel on different git branches:
+
+```
+Agent A (branch: feature-auth)     creates issue #42
+Agent B (branch: feature-api)      creates issue #42  ← COLLISION!
+Agent C (branch: feature-ui)       creates issue #42  ← COLLISION!
+```
+
+With sequential IDs, each agent's local counter independently reaches `#42`. When branches merge, you get three different issues all claiming to be `#42`. Which one wins? Data loss.
+
+Beads solves this with **hash-based IDs** derived from content + timestamp + agent identity:
+
+```
+Agent A → bd-f7a3   (hash of "auth task" + timestamp + agent-A-identity)
+Agent B → bd-c91e   (hash of "api task"  + timestamp + agent-B-identity)
+Agent C → bd-2d5b   (hash of "ui task"   + timestamp + agent-C-identity)
+```
+
+Every ID is globally unique. Branches merge cleanly. No coordination needed between agents.
+
+#### Example: Cell-Level Merge vs Line-Level Merge
+
+Traditional git uses **line-level merge**. If two people edit the same line, you get a conflict — even if they changed different parts of the line.
+
+Dolt uses **cell-level merge**, like a spreadsheet. Each field in a row is an independent cell:
+
+```
+Issue bd-f7a3 in the beads database:
+
+           title          status       assignee
+           ─────          ──────       ────────
+Original:  "Fix auth"     "pending"    "unassigned"
+Agent A:   "Fix auth"     "active"     "unassigned"   ← changed status
+Agent B:   "Fix auth"     "pending"    "polecat-7"    ← changed assignee
+```
+
+With **line-level merge** (git): CONFLICT — both agents touched the same row.
+
+With **cell-level merge** (Dolt): No conflict! Agent A changed `status`, Agent B changed `assignee`. Different cells. Dolt merges both automatically:
+
+```
+Merged:    "Fix auth"     "active"     "polecat-7"    ✓ Both changes preserved
+```
+
+This is critical when 30 agents are updating issue statuses, adding comments, and reassigning work simultaneously. Line-level merge would create constant conflicts. Cell-level merge just works.
 
 ### Integrations
 
