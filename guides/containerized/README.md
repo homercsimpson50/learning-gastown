@@ -69,11 +69,16 @@ The container boundary isolates **GT from your host**, not agents from each othe
 ### 1. Build the Gas Town image
 
 ```bash
+# 1. Build the upstream base image from gastown source
+cd ~/code/gastown-src   # or wherever you cloned the gastown repo
+docker build -t gastown-base:latest -f Dockerfile .
+
+# 2. Apply the overlay (adds keyring for Claude Code credential persistence)
 cd ~/learning-gastown/guides/containerized
-docker build -t gastown:latest -f Dockerfile /path/to/gastown-src
+docker build -t gastown:latest -f Dockerfile .
 ```
 
-The Dockerfile and `docker-entrypoint.sh` live in this directory. The build context must point to the gastown source (it copies and compiles the Go code). This takes ~5 minutes the first time. The image is ~4.5GB and contains everything pre-compiled (Go, Dolt, Claude Code, GT, BD, tmux). Container startup is instant after that.
+Step 1 builds the upstream gastown image (~5 minutes, ~4.5GB) with Go, Dolt, Claude Code, GT, BD, and tmux pre-compiled. Step 2 applies a thin overlay that adds `gnome-keyring` and `dbus` for credential storage, plus a custom entrypoint that starts the keyring daemon and syncs host settings.
 
 ### 2. Configure and start
 
@@ -384,7 +389,8 @@ This fetches the latest from `gastownhall/gastown`, updates your local main, reb
 
 ```bash
 cd ~/code/gastown-src && make build && make install
-docker build -t gastown:latest -f Dockerfile .
+docker build -t gastown-base:latest -f Dockerfile .
+cd ~/learning-gastown/guides/containerized && docker build -t gastown:latest .
 gtc up  # recreate container with new image
 ```
 
