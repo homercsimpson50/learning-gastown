@@ -332,6 +332,14 @@ else
     fi
 fi
 
+# 8.5 Gateway git credential endpoint works
+GIT_CRED=$(dcexec curl -sf gateway:9999/git/credential 2>&1) || GIT_CRED="unreachable"
+if echo "$GIT_CRED" | grep -q '"protocol":"https"'; then
+    pass "Gateway git credential endpoint responds"
+else
+    fail "Gateway git credential" "$GIT_CRED"
+fi
+
 # ---------------------------------------------------------------------------
 echo -e "\n${BOLD}9. Security Controls${NC}"
 

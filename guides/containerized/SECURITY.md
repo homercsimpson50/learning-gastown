@@ -192,7 +192,7 @@ Any agent can `cat ~/.git-credentials` and exfiltrate the token. The file
 persists in the Docker volume across restarts.
 
 **Mitigations:**
-- Use the gateway git credential helper (fetches token on demand, never on disk)
+- Use the gateway git credential helper (`/git/credential` endpoint — fetches token on demand, never on disk)
 - Use SSH deploy keys instead of HTTPS tokens
 - See README.md "Git Authentication" section
 

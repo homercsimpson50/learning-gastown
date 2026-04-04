@@ -206,6 +206,38 @@ def slack_proxy(api_path):
                     content_type=resp.headers.get("content-type", "application/json"))
 
 
+# --- Git Credential Helper ---
+# This endpoint returns the raw GitHub token so that a git credential helper
+# inside the GT container can authenticate pushes/pulls without storing
+# tokens on disk. Rate-limited to prevent abuse.
+
+_git_token_calls = {}
+GIT_TOKEN_RATE_LIMIT = 30  # max calls per minute
+
+@app.route("/git/credential", methods=["GET"])
+def git_credential():
+    """Return GitHub token for git push/pull. Used by git-credential-gateway."""
+    token = SECRETS.get("GITHUB_TOKEN")
+    if not token:
+        return jsonify({"error": "GITHUB_TOKEN not configured"}), 500
+
+    # Simple rate limiting
+    import time
+    now = time.time()
+    caller = request.remote_addr or "unknown"
+    calls = _git_token_calls.get(caller, [])
+    calls = [t for t in calls if now - t < 60]
+    if len(calls) >= GIT_TOKEN_RATE_LIMIT:
+        logging.warning(f"RATE LIMITED git credential request from {caller}")
+        return jsonify({"error": "rate limited"}), 429
+    calls.append(now)
+    _git_token_calls[caller] = calls
+
+    logging.info(f"git credential issued to {caller}")
+    return jsonify({"protocol": "https", "host": "github.com",
+                    "username": "x-access-token", "password": token})
+
+
 # --- Health ---
 
 @app.route("/health")

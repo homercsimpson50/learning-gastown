@@ -411,27 +411,30 @@ Stores a token inside the container volume. Simple but the agent holds the raw t
 
 ### Option 2: Gateway git credential helper (recommended)
 
-Add a thin script inside the GT container that fetches credentials from the gateway:
+The gateway has a `/git/credential` endpoint that returns the GitHub token for push/pull. It's rate-limited (30 calls/min) and only reachable inside the Docker network.
+
+Create a credential helper script inside the GT container:
 
 ```bash
 # /usr/local/bin/git-credential-gateway
 #!/bin/bash
 if [[ "$1" == "get" ]]; then
-    TOKEN=$(curl -s gateway:9999/github/internal/token 2>/dev/null | jq -r .value)
-    echo "protocol=https"
-    echo "host=github.com"
-    echo "username=x-access-token"
-    echo "password=${TOKEN}"
+    RESP=$(curl -s gateway:9999/git/credential 2>/dev/null)
+    echo "protocol=$(echo "$RESP" | jq -r .protocol)"
+    echo "host=$(echo "$RESP" | jq -r .host)"
+    echo "username=$(echo "$RESP" | jq -r .username)"
+    echo "password=$(echo "$RESP" | jq -r .password)"
 fi
 ```
 
 Then configure git to use it:
 
 ```bash
+chmod +x /usr/local/bin/git-credential-gateway
 git config --global credential.helper /usr/local/bin/git-credential-gateway
 ```
 
-This requires adding a `/github/internal/token` endpoint to the gateway server. The token stays inside the Docker network and is rate-limited.
+The token never touches disk — it's fetched on demand from the gateway and used for that single git operation.
 
 ### Option 3: SSH deploy keys
 
