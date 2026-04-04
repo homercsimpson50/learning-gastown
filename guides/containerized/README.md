@@ -39,7 +39,7 @@ Your Laptop (host)
        │    │   └── rigs/
        │    │       └── myproject/  (bind-mounted from host)
        │    │
-       │    └── /home/agent/.claude (subscription auth — read-only mount)
+       │    └── /home/agent/.claude (persistent volume + keyring for credentials)
        │
        ├── Container: gt-victoria-logs
        │    └── VictoriaLogs       (agent telemetry, VMUI on :9428)
@@ -200,7 +200,8 @@ Set these when running `docker compose up`:
 - `no-new-privileges` — prevents privilege escalation
 - `pids: 512` — prevents fork bombs
 - `cpus: 4, memory: 4G` — prevents resource exhaustion
-- `~/.claude:ro` — read-only auth mount
+- `~/.claude` mounted read-only to staging path; writable `claude-data` volume for credentials
+- `gnome-keyring` + `dbus` in container for secure credential storage
 
 ---
 
@@ -396,7 +397,8 @@ gtc up  # recreate container with new image
 | gt, bd, tmux, dolt | Container image | Yes (image layer) | No |
 | Town data (/gt/) | Docker volume | Yes | Via `docker cp` |
 | Rig repos | Bind-mount from host | Yes | Yes (your IDE) |
-| Claude auth | Read-only mount | N/A | N/A |
+| Claude settings | Read-only mount (staging) | N/A | N/A |
+| Claude credentials | Docker volume (keyring) | Yes | No |
 | Dashboard | Port 8080 | N/A | Yes (browser) |
 | Telemetry (VMUI) | Port 9428 | Yes (30 days) | Yes (browser) |
 | Agent sessions (tmux) | Container memory | While running | Via `docker exec` |
@@ -415,7 +417,8 @@ gtc up  # recreate container with new image
 
 - Access host filesystem outside mounted paths
 - Read `~/.ssh`, `~/.aws`, browser data, etc.
-- Modify Claude auth credentials (read-only mount)
+- Read host Claude auth credentials (settings synced, not credentials)
+- Modify host Claude config (host mount is read-only staging path)
 - Access the host Docker daemon
 - Escalate privileges
 - Kill host processes
@@ -431,11 +434,27 @@ A comprehensive security review found **23 issues** (2 critical, 6 high, 15 medi
 **Key takeaway:** This setup is significantly safer than bare-metal (agents can't read SSH keys, AWS creds, browser data) but is not airtight against a determined adversarial agent inside the container.
 
 Top risks to be aware of:
-- **Claude auth token** is readable by agents (read-only mount doesn't prevent reads)
+- **Claude credentials** are stored in the container's keyring — agents with shell access could extract them
 - **Outbound network** is unrestricted — agents can exfiltrate data via HTTP or DNS
 - **git credential.helper store** saves tokens in plaintext inside the container
 
 See **[SECURITY.md](SECURITY.md)** for the full review with severity ratings, attack examples, fixes applied, and a hardening checklist.
+
+---
+
+## Claude Code Authentication
+
+Claude Code credentials are stored in the container's GNOME Keyring (backed by D-Bus). The entrypoint starts the keyring daemon automatically with an empty password.
+
+On first attach, run `/login` inside Claude Code. The OAuth token persists in the `claude-data` Docker volume across container restarts.
+
+**How it works:**
+- Host `~/.claude` is mounted read-only at `/home/agent/.claude-host` (settings only)
+- The entrypoint syncs `settings.json` and `settings.local.json` into the writable `/home/agent/.claude`
+- Claude Code stores OAuth credentials in GNOME Keyring via `libsecret`
+- The `claude-data` named volume persists `/home/agent/.claude` across restarts
+
+**If `/login` doesn't persist:** Check that the container image includes `gnome-keyring` and `dbus` (rebuild with `docker build -t gastown:latest -f Dockerfile .`).
 
 ---
 
