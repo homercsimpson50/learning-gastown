@@ -37,6 +37,9 @@ skip() { SKIP=$((SKIP + 1)); echo -e "  ${YELLOW}SKIP${NC} $1: $2"; }
 
 dcexec() { docker compose -f "$COMPOSE_FILE" exec -T gastown "$@" 2>&1; }
 
+# Detect VLogs host port (may be overridden in docker-compose.override.yml)
+VLOGS_HOST_PORT=$(docker inspect gt-victoria-logs --format '{{range $p,$conf := .NetworkSettings.Ports}}{{if eq $p "9428/tcp"}}{{(index $conf 0).HostPort}}{{end}}{{end}}' 2>/dev/null || echo "9428")
+
 # ---------------------------------------------------------------------------
 echo -e "\n${BOLD}=== Containerized Gas Town Integration Tests ===${NC}\n"
 
@@ -230,7 +233,7 @@ fi
 echo -e "\n${BOLD}7. VictoriaLogs (Observability)${NC}"
 
 # 7.1 VictoriaLogs health endpoint
-VLOGS_HEALTH=$(curl -sf http://localhost:9428/health 2>&1) || VLOGS_HEALTH="unreachable"
+VLOGS_HEALTH=$(curl -sf http://localhost:$VLOGS_HOST_PORT/health 2>&1) || VLOGS_HEALTH="unreachable"
 if [ "$VLOGS_HEALTH" = "OK" ]; then
     pass "VictoriaLogs healthy"
 else
@@ -238,7 +241,7 @@ else
 fi
 
 # 7.2 VMUI accessible
-VMUI_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:9428/select/vmui/ 2>&1) || VMUI_STATUS="000"
+VMUI_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:$VLOGS_HOST_PORT/select/vmui/ 2>&1) || VMUI_STATUS="000"
 if [ "$VMUI_STATUS" = "200" ]; then
     pass "VMUI web UI accessible (HTTP 200)"
 else
@@ -270,7 +273,7 @@ fi
 
 # 7.5 GT telemetry is reaching VictoriaLogs
 # Check if any logs have arrived (GT emits bd.sql events on startup)
-LOG_COUNT=$(curl -sf "http://localhost:9428/select/logsql/query?query=*&limit=1" 2>&1 | wc -l | tr -d ' ')
+LOG_COUNT=$(curl -sf "http://localhost:$VLOGS_HOST_PORT/select/logsql/query?query=*&limit=1" 2>&1 | wc -l | tr -d ' ')
 if [ "$LOG_COUNT" -ge 1 ]; then
     pass "Telemetry flowing: $LOG_COUNT+ log entries in VictoriaLogs"
 else
@@ -278,7 +281,7 @@ else
 fi
 
 # 7.6 Can query specific GT events
-GT_EVENTS=$(curl -sf "http://localhost:9428/select/logsql/query?query=service.name:gastown&limit=1" 2>&1 | wc -l | tr -d ' ')
+GT_EVENTS=$(curl -sf "http://localhost:$VLOGS_HOST_PORT/select/logsql/query?query=service.name:gastown&limit=1" 2>&1 | wc -l | tr -d ' ')
 if [ "$GT_EVENTS" -ge 1 ]; then
     pass "GT-sourced events queryable in VictoriaLogs"
 else
@@ -385,12 +388,12 @@ else
     fail "Memory limit" "not set"
 fi
 
-# 9.5 Claude auth is read-only
-CLAUDE_MOUNT=$(docker inspect gastown --format '{{range .Mounts}}{{if eq .Destination "/home/agent/.claude"}}{{.Mode}}{{end}}{{end}}' 2>/dev/null || echo "?")
-if echo "$CLAUDE_MOUNT" | grep -q "ro"; then
-    pass "~/.claude mounted read-only"
+# 9.5 Host Claude settings mounted read-only (at .claude-host staging path)
+CLAUDE_HOST_MOUNT=$(docker inspect gastown --format '{{range .Mounts}}{{if eq .Destination "/home/agent/.claude-host"}}{{.Mode}}{{end}}{{end}}' 2>/dev/null || echo "?")
+if echo "$CLAUDE_HOST_MOUNT" | grep -q "ro"; then
+    pass "~/.claude-host mounted read-only"
 else
-    fail "Claude auth mount" "expected ro, got: $CLAUDE_MOUNT"
+    fail "Claude auth mount" "expected ro on .claude-host, got: $CLAUDE_HOST_MOUNT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -410,6 +413,30 @@ if [ -z "$DOLT_PORTS" ]; then
     pass "Dolt port 3307 NOT exposed to host"
 else
     fail "Dolt exposure" "port 3307 is mapped to host"
+fi
+
+# 10.3 Cannot read host SSH keys
+SSH_OUT=$(dcexec ls /home/agent/.ssh 2>&1) || SSH_OUT="no access"
+if echo "$SSH_OUT" | grep -qE "No such file|cannot access|no access"; then
+    pass "Container cannot access host ~/.ssh"
+else
+    fail "SSH isolation" "container can see ~/.ssh: $SSH_OUT"
+fi
+
+# 10.4 Cannot read host filesystem
+HOST_OUT=$(dcexec ls /Users 2>&1) || HOST_OUT="no access"
+if echo "$HOST_OUT" | grep -qE "No such file|cannot access|no access"; then
+    pass "Container cannot access host /Users"
+else
+    fail "Host isolation" "container can see /Users: $HOST_OUT"
+fi
+
+# 10.5 Env var isolation: GT_OTEL_LOGS_URL points to sidecar, not host
+OTEL_IN_CONTAINER=$(dcexec printenv GT_OTEL_LOGS_URL 2>/dev/null || echo "")
+if echo "$OTEL_IN_CONTAINER" | grep -q "victoria-logs:9428"; then
+    pass "GT_OTEL_LOGS_URL points to sidecar (not host localhost)"
+else
+    fail "Env isolation" "GT_OTEL_LOGS_URL unexpected: $OTEL_IN_CONTAINER"
 fi
 
 # ---------------------------------------------------------------------------
