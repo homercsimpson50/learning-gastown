@@ -456,6 +456,10 @@ On first attach, run `/login` inside Claude Code. The OAuth token persists in th
 
 **If `/login` doesn't persist:** Check that the container image includes `gnome-keyring` and `dbus` (rebuild with `docker build -t gastown:latest -f Dockerfile .`).
 
+### AWS Bedrock (planned)
+
+Support for AWS Bedrock as an alternative to Claude Pro/Max OAuth is planned. This will allow using Bedrock credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`) in environments where personal Claude subscriptions are not permitted. See [TODO.md](TODO.md) for details.
+
 ---
 
 ## Git Authentication Inside the Container
