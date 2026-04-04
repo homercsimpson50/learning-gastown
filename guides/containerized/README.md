@@ -19,7 +19,7 @@ Gas Town agents run with `--dangerously-skip-permissions`. On a personal throwaw
 ```
 Your Laptop (host)
   │
-  ├── Browser → http://localhost:8080  (GT Dashboard)
+  ├── Browser → http://localhost:8081  (GT Dashboard)
   ├── Browser → http://localhost:9428/select/vmui  (Agent telemetry)
   ├── Terminal → docker compose exec gastown gt feed  (TUI)
   ├── Terminal → docker compose exec gastown gt mayor attach  (Mayor)
@@ -186,7 +186,7 @@ Set these when running `docker compose up`:
 |----------|---------|---------|
 | `GIT_USER` | TestUser | Git commit author name |
 | `GIT_EMAIL` | test@example.com | Git commit author email |
-| `DASHBOARD_PORT` | 8080 | GT dashboard port on host |
+| `DASHBOARD_PORT` | 8081 | GT dashboard port on host (8081 avoids collision with local GT) |
 | `VLOGS_PORT` | 9428 | VictoriaLogs VMUI port on host |
 | `SECRETS_FILE` | ./secrets.env.example | Path to secrets file for gateway |
 | `GATEWAY_TOKEN` | (empty) | Auth token for gateway (optional) |
@@ -224,7 +224,7 @@ Telemetry is retained for 30 days by default (configurable via `retentionPeriod`
 
 ### GT Dashboard
 
-**http://localhost:8080** — convoy tracking, worker status, merge queue.
+**http://localhost:8081** — convoy tracking, worker status, merge queue.
 
 ### GT Feed (TUI)
 

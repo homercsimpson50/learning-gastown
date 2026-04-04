@@ -161,10 +161,12 @@ cmd_up() {
     fi
 
     # Add standalone repos
-    mounts+=("${repos[@]}")
+    if [ ${#repos[@]} -gt 0 ]; then
+        mounts+=("${repos[@]}")
+    fi
 
     echo ""
-    generate_override "${mounts[@]}"
+    generate_override "${mounts[@]+"${mounts[@]}"}"
 
     # Build compose command
     local compose_args=("-f" "$COMPOSE_FILE")

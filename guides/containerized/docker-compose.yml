@@ -74,7 +74,7 @@ services:
       # from GIT_USER/GIT_EMAIL env vars. A read-only mount blocks that.
 
     ports:
-      - "${DASHBOARD_PORT:-8080}:8080"
+      - "${DASHBOARD_PORT:-8081}:8080"
 
     networks:
       - gt-net
