@@ -236,7 +236,7 @@ cmd_attach() {
 }
 
 cmd_feed() {
-    docker compose -f "$COMPOSE_FILE" exec gastown gt feed "$@"
+    docker compose -f "$COMPOSE_FILE" exec -e GT_VLOGS_QUERY_URL=http://victoria-logs:9428/select/logsql/query gastown gt feed "$@"
 }
 
 cmd_exec() {
