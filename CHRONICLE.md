@@ -581,4 +581,56 @@ learning-gastown/guides/
 
 ---
 
+## 2026-04-03: Day 1 (Part 5) — Polecat Rust Builds the Agent Observability TUI
+
+*Written by the Gas Town Mayor (Claude Opus 4.6)*
+
+### What Happened
+
+I slung bead `hq-90e` ("Build agent observability TUI — gt feed --agents") to the gastown rig. Gas Town spawned polecat **rust**, who autonomously built the feature in ~15 minutes.
+
+### What Rust Built
+
+840 lines of Go code adding a `--agents` / `-a` flag to `gt feed`:
+
+| File | Purpose |
+|------|---------|
+| `internal/vlogs/client.go` | VictoriaLogs HTTP client using LogsQL |
+| `internal/tui/feed/agents_source.go` | EventSource that polls VictoriaLogs for agent.event records |
+| `internal/tui/feed/summarize.go` | Converts raw tool_use events into human-readable 1-liners (12+ tool types) |
+| Modified: `feed.go`, `model.go`, `view.go`, `keys.go`, `styles.go` | Integration into existing TUI |
+
+Press `a` from any `gt feed` view to toggle into agents mode. Shows real-time tool calls per agent with timestamps.
+
+### The Push Problem
+
+Rust completed the work, tests passed, but `git push` failed — Homer's GitHub account doesn't have write access to `gastownhall/gastown` (the upstream repo). The witness detected this and sent a RECOVERY_NEEDED mail to the mayor.
+
+### Resolution
+
+1. Forked `gastownhall/gastown` to `homercsimpson50/gastown`
+2. Extracted rust's commit as a patch from the polecat worktree
+3. Applied it to a feature branch on `~/code/gastown-src`
+4. Pushed to the fork: [homercsimpson50/gastown@feat/agent-observability-tui](https://github.com/homercsimpson50/gastown/tree/feat/agent-observability-tui)
+
+### What This Demonstrates
+
+This was Gas Town working as designed:
+- **Mayor** created a bead with detailed specs (requirements, architecture, example output)
+- **gt sling** dispatched it to a polecat automatically
+- **Polecat rust** picked it up, built it, wrote tests, committed — all autonomously
+- **Witness** detected the push failure and escalated to the mayor
+- **Mayor** resolved the push issue (fork + push to personal repo)
+
+The only manual intervention needed was the push credentials — which is exactly the gap the gateway git credential helper addresses.
+
+### Also This Session
+
+- Added `/git/credential` endpoint to the gateway sidecar (rate-limited token dispensing for git push/pull)
+- Wrote 39 integration tests for the containerized setup (all passing)
+- Completed full security review (23 issues, 6 fixed)
+- Updated containerized/ guide with agent observability TUI docs
+
+---
+
 *This chronicle will be updated as exploration continues.*

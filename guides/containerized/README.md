@@ -231,7 +231,38 @@ Telemetry is retained for 30 days by default (configurable via `retentionPeriod`
 ```bash
 docker compose exec gastown gt feed           # activity dashboard
 docker compose exec gastown gt feed -p        # problems view (stuck agents)
+docker compose exec gastown gt feed --agents  # agent tool-call activity (see below)
 ```
+
+### Agent Observability TUI (gt feed --agents)
+
+A custom extension that adds a real-time agent tool-call view to `gt feed`. Shows what each agent is doing moment-to-moment — reads, writes, searches, bash commands — summarized into human-readable one-liners.
+
+```
+03:42:01 mayor    Read CHRONICLE.md (lines 1-50)
+03:42:03 mayor    Searched codebase for 'gateway' (4 files matched)
+03:42:08 Toast    Fixed auth token refresh in src/auth.ts
+03:42:12 Toast    Ran test suite (14 passed, 0 failed)
+```
+
+Press `a` from any `gt feed` view to toggle into agents mode.
+
+**To use this**, build GT from the fork with the feature branch:
+
+```bash
+cd ~/code/gastown-src
+git remote add fork https://github.com/homercsimpson50/gastown.git  # if not already added
+git fetch fork feat/agent-observability-tui
+git checkout feat/agent-observability-tui
+make build && make install
+
+# Rebuild the Docker image to include it:
+docker build -t gastown:latest -f Dockerfile .
+```
+
+Requires VictoriaLogs running (included in this docker-compose) and `GT_OTEL_LOGS_URL` + `GT_LOG_AGENT_OUTPUT=true` (already set in compose).
+
+Source: [homercsimpson50/gastown@feat/agent-observability-tui](https://github.com/homercsimpson50/gastown/tree/feat/agent-observability-tui)
 
 ---
 
