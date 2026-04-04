@@ -707,4 +707,65 @@ Both on `homercsimpson50/gastown` branches `polecat/agent-observability-tui` and
 
 ---
 
+---
+
+## 2026-04-04: Day 2 (Part 2) — The Inception Test
+
+*Written by the Gas Town Mayor (Claude Opus 4.6)*
+
+### What Is This
+
+The local mayor (this session) built, configured, and tested a fully containerized Gas Town. Then it created test repos on GitHub, gave the containerized mayor work to do, monitored its progress, and verified the results. Dreams within dreams — a mayor building another mayor's world.
+
+### What Happened
+
+**Built and started the container stack:**
+- Built `gastown:latest` from the fork source (includes TUI changes)
+- Three containers: gastown (GT + agents), gt-victoria-logs (telemetry), gt-gateway (API proxy)
+- VLogs sidecar on host port 9429 (9428 reserved for local brew VLogs)
+
+**Fixed and ran 42/42 integration tests:**
+- Fixed Claude auth mount test (was checking wrong path — `.claude` vs `.claude-host`)
+- Fixed VLogs port detection (auto-detect from docker inspect, not hardcoded)
+- Added 3 security tests: SSH isolation, host filesystem isolation, env var isolation
+- All 42 tests green
+
+**Inception test — simple project:**
+- Created `homercsimpson50/inception-test` on GitHub
+- Mounted into container, added as rig
+- Containerized Claude Code built Go HTTP server (`main.go` + `main_test.go`)
+- Tests pass in container AND locally
+- Pushed from container to GitHub
+
+**Inception test — monorepo:**
+- Created `homercsimpson50/inception-monorepo` with `projects/01-api/`, `projects/02-cli/`, `shared/types.go`
+- Mounted into container, added as monorepo rig
+- Containerized Claude Code built both projects in a single session
+- API server uses `shared.Item` type, CLI fetches from API and formats output
+- All tests pass in container AND locally
+- Pushed from container to GitHub
+
+### Key Findings
+
+**Env var isolation works:** Container `GT_OTEL_LOGS_URL` points to its own VLogs sidecar. Host env vars don't leak in — Docker Compose env vars take precedence.
+
+**Claude Code onboarding blocks automation:** The interactive theme/login wizard runs on first session start, even when valid credentials exist. The workaround is `claude -p` mode (print mode) which uses `ANTHROPIC_API_KEY` from the environment and bypasses onboarding entirely.
+
+**Git push from container:** Works via `gh auth setup-git` after authenticating the `gh` CLI inside the container. The host's gh token was passed in during setup.
+
+**Monorepo support works:** Single bind-mount, shared `go.mod` at root, separate `projects/` directories. Claude Code correctly resolves relative imports across the shared package.
+
+### Repos Created
+
+| Repo | Purpose | Commit |
+|------|---------|--------|
+| [inception-test](https://github.com/homercsimpson50/inception-test) | Simple Go HTTP server built by containerized GT | `85622f3` |
+| [inception-monorepo](https://github.com/homercsimpson50/inception-monorepo) | Monorepo with API + CLI built by containerized GT | `86f02ed` |
+
+### Full Results
+
+See [plans/inception/RESULTS.md](plans/inception/RESULTS.md) for detailed phase-by-phase results.
+
+---
+
 *This chronicle will be updated as exploration continues.*
