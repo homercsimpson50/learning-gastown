@@ -38,9 +38,9 @@ OVERRIDE_FILE="$SCRIPT_DIR/docker-compose.override.yml"
 
 # Colors
 if [ -t 1 ]; then
-    GREEN='\033[0;32m'; RED='\033[0;31m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
+    GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 else
-    GREEN=''; RED=''; BOLD=''; DIM=''; NC=''
+    GREEN=''; RED=''; YELLOW=''; BOLD=''; DIM=''; NC=''
 fi
 
 die() { echo -e "${RED}Error:${NC} $1" >&2; exit 1; }

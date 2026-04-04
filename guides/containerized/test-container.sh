@@ -440,6 +440,69 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+echo -e "\n${BOLD}11. Mount Isolation${NC}"
+
+# 11.1 Check which rigs are mounted
+MOUNTED_RIGS=$(dcexec ls /gt/rigs/ 2>/dev/null || echo "")
+if [ -n "$MOUNTED_RIGS" ]; then
+    pass "Rig mounts exist: $(echo $MOUNTED_RIGS | tr '\n' ' ')"
+else
+    skip "Mount isolation" "no rigs mounted (run with gtc up --repo ...)"
+fi
+
+# 11.2 Monorepo selective mount test
+# If monorepo projects are mounted individually (via -p), verify that
+# unmounted projects are NOT accessible inside the container.
+# This tests the isolation between -p 01 -p 02 (mounted) vs 03 (not mounted).
+#
+# Detection: if a rig named "01-*" or "02-*" exists but there's a projects/03-*
+# on the HOST monorepo that's NOT mounted, isolation is working.
+MONO_01=$(dcexec ls /gt/rigs/01-api/repo 2>&1) || MONO_01=""
+MONO_03=$(dcexec ls /gt/rigs/03-secret/repo 2>&1) || MONO_03=""
+
+if echo "$MONO_01" | grep -qE "README|main.go|go.mod"; then
+    # 01-api is mounted — check if 03-secret is correctly absent
+    if echo "$MONO_03" | grep -qE "No such file|cannot access" || [ -z "$MONO_03" ]; then
+        pass "Monorepo isolation: 01-api accessible, 03-secret not mounted"
+    else
+        fail "Monorepo isolation" "03-secret is accessible but should not be: $MONO_03"
+    fi
+else
+    # Monorepo projects not mounted individually — skip
+    # Check if full monorepo is mounted instead (via --repo)
+    MONO_FULL=$(dcexec ls /gt/rigs/inception-monorepo/repo/projects/ 2>&1) || MONO_FULL=""
+    if [ -n "$MONO_FULL" ]; then
+        # Full monorepo mounted — all projects visible (expected with --repo, not --monorepo -p)
+        if echo "$MONO_FULL" | grep -q "03-secret"; then
+            pass "Full monorepo mount: all projects visible (use --monorepo -p to restrict)"
+        else
+            pass "Full monorepo mount: projects visible"
+        fi
+    else
+        skip "Monorepo isolation" "no monorepo projects mounted"
+    fi
+fi
+
+# 11.3 Mounted repos are writable (agents need to commit)
+if [ -n "$MOUNTED_RIGS" ]; then
+    FIRST_RIG=$(echo "$MOUNTED_RIGS" | head -1)
+    WRITE_TEST=$(dcexec bash -c "touch /gt/rigs/$FIRST_RIG/repo/.write-test && rm /gt/rigs/$FIRST_RIG/repo/.write-test && echo ok" 2>&1) || WRITE_TEST=""
+    if [ "$WRITE_TEST" = "ok" ]; then
+        pass "Mounted rigs are writable (agents can commit)"
+    else
+        fail "Rig write access" "cannot write to /gt/rigs/$FIRST_RIG/repo: $WRITE_TEST"
+    fi
+fi
+
+# 11.4 Host Claude settings are read-only (not writable)
+CLAUDE_WRITE=$(dcexec bash -c "touch /home/agent/.claude-host/.write-test 2>&1" 2>&1) || CLAUDE_WRITE="read-only"
+if echo "$CLAUDE_WRITE" | grep -qE "Read-only|read-only|Permission denied"; then
+    pass "Host .claude-host is read-only (cannot modify host settings)"
+else
+    fail "Claude host mount" "expected read-only, got writable"
+fi
+
+# ---------------------------------------------------------------------------
 echo -e "\n${BOLD}=== Results ===${NC}\n"
 TOTAL=$((PASS + FAIL + SKIP))
 echo -e "  ${GREEN}$PASS passed${NC}  ${RED}$FAIL failed${NC}  ${YELLOW}$SKIP skipped${NC}  ($TOTAL total)"

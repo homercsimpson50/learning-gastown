@@ -448,17 +448,52 @@ See **[SECURITY.md](SECURITY.md)** for the full review with severity ratings, at
 
 ## Claude Code Authentication
 
-Claude Code credentials are stored in the container's GNOME Keyring (backed by D-Bus). The entrypoint starts the keyring daemon automatically with an empty password.
+### How it works (zero manual steps after first setup)
 
-On first attach, run `/login` inside Claude Code. The OAuth token persists in the `claude-data` Docker volume across container restarts.
+Your host machine authenticates Claude Code via Google OAuth (Pro/Max subscription). The containerized setup inherits this automatically:
 
-**How it works:**
-- Host `~/.claude` is mounted read-only at `/home/agent/.claude-host` (settings only)
-- The entrypoint syncs `settings.json` and `settings.local.json` into the writable `/home/agent/.claude`
-- Claude Code stores OAuth credentials in GNOME Keyring via `libsecret`
-- The `claude-data` named volume persists `/home/agent/.claude` across restarts
+1. **Host side**: You logged in once via browser → Claude Code stored OAuth tokens in `~/.claude/.credentials.json`
+2. **Container entrypoint**: On first start, copies `.credentials.json` from the read-only host mount (`~/.claude-host/`) into the container's writable `claude-data` volume
+3. **Claude Code inside container**: Finds the refresh token, silently gets fresh access tokens — no browser needed
+4. **Persistence**: The `claude-data` Docker volume survives container restarts, `gtc down`/`up`, laptop reboots, and image rebuilds. Auth is permanent until you explicitly delete the volume.
 
-**If `/login` doesn't persist:** Check that the container image includes `gnome-keyring` and `dbus` (rebuild with `docker build -t gastown:latest -f Dockerfile .`).
+### One-time setup (first time only)
+
+On the very first `gtc attach`, Claude Code shows a theme picker (Dark/Light mode). Select one and press Enter. This is the only manual step — it persists in the volume and never appears again.
+
+If you see a login screen instead of the theme picker, your host `~/.claude/.credentials.json` may be missing or expired. Fix:
+```bash
+# On the host (not in container):
+claude    # This opens browser → Google OAuth → stores credentials
+# Then restart the container to re-sync:
+gtc down && gtc up --repo ...
+```
+
+### For teammates
+
+Anyone using this setup needs:
+1. A Claude Pro/Max subscription authenticated on their host machine (`claude` → browser login → done)
+2. That's it. The container inherits their credentials automatically.
+
+No API keys, no tokens to manage, no secrets files. The container entrypoint handles everything.
+
+### Credential lifecycle
+
+| Event | What happens |
+|-------|-------------|
+| `gtc up` (first time) | Entrypoint copies `.credentials.json` from host into volume |
+| `gtc up` (subsequent) | Volume already has credentials, entrypoint skips copy |
+| Laptop restart | Volume persists, credentials still valid |
+| `gtc down && gtc up` | Volume persists, credentials still valid |
+| Image rebuild | Volume persists (volumes are independent of images) |
+| OAuth token expires | Claude Code uses refresh token automatically |
+| Refresh token revoked | Delete volume: `docker volume rm gastown_claude-data`, then `gtc up` to re-sync |
+
+### What NOT to do
+
+- Do NOT pass `ANTHROPIC_API_KEY` — use OAuth only
+- Do NOT run `/login` inside the container — credentials sync from host
+- Do NOT mount `~/.claude` as writable — the read-only host mount + separate volume is the correct pattern
 
 ### AWS Bedrock (planned)
 
