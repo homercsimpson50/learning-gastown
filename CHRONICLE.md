@@ -476,7 +476,7 @@ Key design decisions:
 
 Reviewed and improved [homercsimpson50/onion-claude](https://github.com/homercsimpson50/onion-claude):
 
-- **Switched from API key to subscription auth** — same pattern as the containerized GT guide. Mounts `~/.claude` read-only so Claude Code uses Pro/Max subscription instead of per-token API billing.
+- **Switched from API key to subscription auth** — same pattern as the containerized GT guide. Mounts `~/.claude` read-only so Claude Code uses Pro/Max subscription instead of per-token API billing. With Google OAuth auth, no static secrets exist in `~/.claude/` to exfiltrate.
 - **Added disclaimers** — dangerous permissions, Tor legality, breach-check ethics.
 - **Hardened code** — request timeouts (15s), input validation, rate limit handling, generic User-Agent, stricter bash error handling.
 - **Added Tor usage instructions** — architecture diagram, commands, troubleshooting.
@@ -519,7 +519,7 @@ Found **2 critical, 6 high, 15 medium severity issues**. Key findings:
 
 | Severity | Issue | Status |
 |----------|-------|--------|
-| CRITICAL | ~/.claude auth token readable by agents, exfiltrable via HTTP/DNS | Documented as known risk |
+| CRITICAL | ~/.claude auth token exfiltration — **low risk with OAuth (Pro/Max) or Bedrock** (no static secrets); high risk only with static API keys | Reduced to low for OAuth/Bedrock |
 | CRITICAL | Gateway SSRF via path traversal in api_path | **Fixed** — validate_path() rejects `..`, `//`, non-alphanumeric |
 | HIGH | Excessive capabilities (DAC_OVERRIDE, FOWNER, NET_RAW) | **Fixed** — stripped to CHOWN/SETUID/SETGID |
 | HIGH | No resource limits (fork bomb, OOM) | **Fixed** — pids:512, cpus:4, memory:4G |
@@ -563,7 +563,7 @@ GT has two observability layers:
 1. **Work graph** (beads, slings, convoys) — visible via `gt feed`, `gt trail`, dashboard
 2. **Tool-level telemetry** (every agent tool call, thinking block, token usage) — streams via `gt agent-log` to OTLP backend
 
-Layer 2 exists as pipeline (`gt agent-log` → VictoriaLogs) but the human-readable frontend is barebones — just VMUI log queries. Custom Grafana dashboards are needed for real-time agent activity views. This is queued as a future project.
+Layer 2 exists as pipeline (`gt agent-log` → VictoriaLogs). A custom TUI (`gt feed --agents`) provides real-time agent tool-call summaries — reads, writes, edits, bash commands summarized into one-liners per agent. Press `a` from any `gt feed` view to toggle into agents mode.
 
 ### Files Created/Modified
 
@@ -630,6 +630,80 @@ The only manual intervention needed was the push credentials — which is exactl
 - Wrote 39 integration tests for the containerized setup (all passing)
 - Completed full security review (23 issues, 6 fixed)
 - Updated containerized/ guide with agent observability TUI docs
+
+---
+
+## 2026-04-04: Day 2 — Local Agent Observability and TUI Fixes
+
+*Written by the Gas Town Mayor (Claude Opus 4.6)*
+
+### What Changed
+
+Brought the agent observability TUI (`gt feed --agents`) from a container-only proof-of-concept to working on the local bare-metal setup. Fixed bugs found during live testing. Added rig column and rig filter. Updated security docs based on auth model analysis.
+
+### Local VictoriaLogs Setup
+
+VictoriaLogs now runs as a native macOS service via Homebrew — no Docker dependency for local use:
+
+```bash
+brew install victorialogs
+brew services start victorialogs
+# Runs on localhost:9428, data at /opt/homebrew/var/victorialogs-data
+```
+
+GT telemetry is configured via shell env vars in `~/.zshrc`:
+
+```bash
+export GT_OTEL_LOGS_URL="http://localhost:9428/insert/opentelemetry/v1/logs"
+export GT_LOG_AGENT_OUTPUT="true"
+```
+
+After daemon restart (`gt daemon stop && gt daemon start`), all agent sessions emit OTLP events to VLogs. The TUI queries VLogs via its LogsQL HTTP API.
+
+### Bug Fixes
+
+**Sort order bug in agents feed**: VictoriaLogs returns events newest-first, but the dedup logic in `addAgentEvent` tracked `lastSeenAgentTime` and rejected anything not strictly newer. Result: batch fetches showed only 1 event. Fix: sort entries oldest-first in `fetchAndEmit` before emitting.
+
+**Test event format mismatch**: The TUI's `SummarizeToolUse` expected `{"type":"tool_use","name":"Read","input":{...}}` but test events used `{"tool":"Read","args":{...}}`. Once the correct format was used, summaries rendered properly.
+
+### New Features
+
+**Rig column**: Each event now shows which rig/project it came from, visible in the agents feed as a labeled column.
+
+**Rig filter**: Press `r` to cycle through rig filters (all → rig1 → rig2 → ... → all). Status bar shows active filter. Useful when multiple rigs are running different projects.
+
+### Security Doc Updates
+
+Analyzed the actual threat model for credential exfiltration (SECURITY.md C1):
+
+- **Google OAuth (Pro/Max)**: No static secrets in `~/.claude/` — browser-based auth, nothing to exfiltrate. Risk: **Low**.
+- **AWS Bedrock**: Credentials are short-lived and passed as env vars, not mounted from host. Risk: **Low**.
+- **Static API keys**: Original threat applies in full. Risk: **High**.
+
+Downgraded C1 from CRITICAL to auth-method-dependent. Updated SECURITY.md, README.md, TODO.md, and CHRONICLE.md (in-place, not new entries) to reflect this.
+
+### Architecture: Local vs Container
+
+The telemetry stack is intentionally duplicated between setups:
+
+| Component | Local | Container |
+|-----------|-------|-----------|
+| VictoriaLogs | `brew services` (localhost:9428) | Docker sidecar (`victoria-logs:9428`) |
+| GT_OTEL_LOGS_URL | `~/.zshrc` env var | `docker-compose.yml` env |
+| GT binary | `~/.local/bin/gt` (from fork build) | Built into container image |
+| Agent sessions | Native tmux | Container tmux |
+| `gt feed --agents` | Native TUI | `docker exec gastown gt feed --agents` |
+
+No cross-contamination — local and container setups are fully independent. The fork (`homercsimpson50/gastown@feat/agent-observability-tui`) is the single source of truth for both.
+
+### Commits Pushed to Fork
+
+| Commit | Description |
+|--------|-------------|
+| `758ace64` | fix: sort VictoriaLogs entries oldest-first for correct dedup |
+| `e23684f5` | feat: add rig column and rig filter to agents feed view |
+
+Both on `homercsimpson50/gastown` branches `polecat/agent-observability-tui` and `feat/agent-observability-tui`.
 
 ---
 

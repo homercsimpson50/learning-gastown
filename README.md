@@ -526,7 +526,9 @@ A full terminal dashboard built with [Bubbletea](https://github.com/charmbracele
 
 Navigation: `j/k` scroll, `tab` switch panels, `1/2/3` jump to panel, `q` quit.
 
-The **problems view** (`gt feed -p`) is especially useful — it surfaces stuck agents and GUPP violations (hooked work + 30 min no progress). Keyboard actions: `Enter` = attach, `n` = nudge, `h` = handoff.
+The **problems view** (`gt feed -p`) surfaces stuck agents and GUPP violations (hooked work + 30 min no progress). Keyboard actions: `Enter` = attach, `n` = nudge, `h` = handoff.
+
+The **agents view** (`gt feed -a`) shows real-time agent tool calls from VictoriaLogs — reads, writes, edits, bash commands summarized into human-readable one-liners per agent. Shows rig/project column; press `r` to cycle rig filter. Requires VictoriaLogs running locally or in a container sidecar.
 
 ```
 Event symbols:
@@ -537,6 +539,23 @@ Agent state (problems view):
   🔥 GUPP violation (critical)     ⚠  STALLED     ●  Working
   ○  Idle                          💀 Zombie
 ```
+
+#### Local VictoriaLogs Setup (for `gt feed --agents`)
+
+```bash
+brew install victorialogs
+brew services start victorialogs
+```
+
+Add to `~/.zshrc`:
+```bash
+export GT_OTEL_LOGS_URL="http://localhost:9428/insert/opentelemetry/v1/logs"
+export GT_LOG_AGENT_OUTPUT="true"
+```
+
+Restart the GT daemon (`gt daemon stop && gt daemon start`). All agent sessions will emit OTLP events to VLogs. Query raw logs at `http://localhost:9428/select/vmui`.
+
+Source: [homercsimpson50/gastown@feat/agent-observability-tui](https://github.com/homercsimpson50/gastown/tree/feat/agent-observability-tui)
 
 ### `gt dashboard --open` — Web UI (Best for Overview)
 

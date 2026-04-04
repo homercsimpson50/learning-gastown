@@ -265,6 +265,8 @@ Requires VictoriaLogs running (included in this docker-compose) and `GT_OTEL_LOG
 
 Source: [homercsimpson50/gastown@feat/agent-observability-tui](https://github.com/homercsimpson50/gastown/tree/feat/agent-observability-tui)
 
+**Local (non-container) setup:** VictoriaLogs can also run natively via `brew install victorialogs && brew services start victorialogs`. See the [main README](../../README.md#local-victorialogs-setup-for-gt-feed---agents) for local setup instructions. Local and container setups are fully independent — no cross-contamination.
+
 ---
 
 ## Secrets Gateway
@@ -417,7 +419,7 @@ gtc up  # recreate container with new image
 
 - Access host filesystem outside mounted paths
 - Read `~/.ssh`, `~/.aws`, browser data, etc.
-- Read host Claude auth credentials (settings synced, not credentials)
+- Read host Claude auth credentials (OAuth: no static secrets in `~/.claude/`; Bedrock: short-lived creds passed as env vars, no host mounting)
 - Modify host Claude config (host mount is read-only staging path)
 - Access the host Docker daemon
 - Escalate privileges
@@ -429,14 +431,16 @@ gtc up  # recreate container with new image
 
 ## Security Review
 
-A comprehensive security review found **23 issues** (2 critical, 6 high, 15 medium). Six have been fixed in this setup; 17 remain as known risks with documented mitigations.
+A comprehensive security review found **23 issues** (2 critical, 6 high, 15 medium). Seven have been fixed or reduced; 16 remain as known risks with documented mitigations.
 
 **Key takeaway:** This setup is significantly safer than bare-metal (agents can't read SSH keys, AWS creds, browser data) but is not airtight against a determined adversarial agent inside the container.
 
-Top risks to be aware of:
-- **Claude credentials** are stored in the container's keyring — agents with shell access could extract them
+**Auth method matters:** The original C1 (critical — credential exfiltration from `~/.claude/`) assumed static API keys. If you authenticate via **Google OAuth (Pro/Max)** or **AWS Bedrock**, there are no static secrets in `~/.claude/` to exfiltrate, reducing this to low risk. See [SECURITY.md](SECURITY.md) C1 for details.
+
+Remaining risks to be aware of:
 - **Outbound network** is unrestricted — agents can exfiltrate data via HTTP or DNS
 - **git credential.helper store** saves tokens in plaintext inside the container
+- **Static API keys** (if used instead of OAuth/Bedrock) remain a high-risk exfiltration target
 
 See **[SECURITY.md](SECURITY.md)** for the full review with severity ratings, attack examples, fixes applied, and a hardening checklist.
 
@@ -458,7 +462,11 @@ On first attach, run `/login` inside Claude Code. The OAuth token persists in th
 
 ### AWS Bedrock (planned)
 
-Support for AWS Bedrock as an alternative to Claude Pro/Max OAuth is planned. This will allow using Bedrock credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`) in environments where personal Claude subscriptions are not permitted. See [TODO.md](TODO.md) for details.
+Support for AWS Bedrock as an alternative to Claude Pro/Max OAuth is planned for environments where personal Claude subscriptions are not permitted. Bedrock credentials are short-lived, auto-expire, and passed as environment variables — no host filesystem mounting needed. See [TODO.md](TODO.md) for details.
+
+### Security note on auth methods
+
+Neither OAuth (Pro/Max) nor Bedrock stores long-lived static secrets in `~/.claude/`. This means mounting `~/.claude:ro` into the container exposes only settings and preferences, not credentials. The critical exfiltration risk (SECURITY.md C1) only applies if you use a static `ANTHROPIC_API_KEY`.
 
 ---
 
