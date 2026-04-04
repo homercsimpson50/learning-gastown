@@ -70,6 +70,25 @@ HEADER
         local container_path="${entry##*:}"
         echo "      - ${host_path}:${container_path}" >> "$OVERRIDE_FILE"
     done
+
+    # Pass ANTHROPIC_API_KEY if set in host environment
+    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+        cat >> "$OVERRIDE_FILE" <<EOF
+    environment:
+      ANTHROPIC_API_KEY: \${ANTHROPIC_API_KEY:-}
+EOF
+    fi
+
+    # Avoid VLogs port conflict if local VLogs is running on 9428
+    if curl -sf http://localhost:9428/health >/dev/null 2>&1; then
+        echo -e "  ${YELLOW}Note:${NC} Local VictoriaLogs detected on :9428, using :9429 for container"
+        cat >> "$OVERRIDE_FILE" <<'EOF'
+
+  victoria-logs:
+    ports:
+      - "9429:9428"
+EOF
+    fi
 }
 
 # ---------------------------------------------------------------------------

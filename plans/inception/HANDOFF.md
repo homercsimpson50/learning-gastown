@@ -119,34 +119,31 @@ Include:
 
 ## How Homer Starts the Containerized Mayor
 
-Homer: run these commands to attach to the containerized mayor and give it this handoff document:
-
 ```bash
-# Make sure containers are running
-cd ~/learning-gastown/guides/containerized
-docker compose ps
+# Rebuild image first (entrypoint now syncs OAuth credentials from host)
+cd ~/gt/gastown/polecats/rust/gastown
+docker build -t gastown:latest -f ~/learning-gastown/guides/containerized/Dockerfile .
 
-# Mount learning-gastown so the containerized mayor can read/write results
-# Add this to docker-compose.override.yml under gastown volumes:
-#   - ~/learning-gastown:/gt/rigs/learning/repo
-
-# Recreate the container with the new mount
-GIT_USER="Homer Simpson" GIT_EMAIL="homer.c.simpson50@gmail.com" docker compose up -d
+# Start with all repos mounted (gtc handles the override file)
+gtc up --repo ~/inception-test --repo ~/inception-monorepo --repo ~/learning-gastown
 
 # Attach to the containerized mayor
-docker compose exec gastown gt mayor attach
+gtc attach
 
 # Once inside, tell the mayor:
 # "Read /gt/rigs/learning/repo/plans/inception/HANDOFF.md and execute all tasks.
 #  Write results to /gt/rigs/learning/repo/plans/inception/CONTAINER-MAYOR-RESULTS.md"
+
+# Ctrl-B D to detach
 ```
 
-If the mayor's Claude Code session needs onboarding, complete it manually:
-1. Select Dark mode → Enter
-2. If asked about API key → Yes
-3. If asked login method → "Anthropic Console account" (uses the API key)
+The updated entrypoint syncs `.credentials.json` from the host, so the
+container inherits your Google OAuth / Max subscription. No browser login
+or onboarding should be needed.
 
-After that, the mayor should be interactive and can execute the tasks above.
+If onboarding still appears (first time only, persists in volume after):
+1. Select Dark mode → Enter
+2. Select "Claude account with subscription" → Enter
 
 ---
 

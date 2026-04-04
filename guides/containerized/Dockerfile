@@ -87,13 +87,15 @@ ENVEOF
     fi
 fi
 
-# --- Sync host Claude settings into writable home ---
+# --- Sync host Claude config into writable home ---
 # Host .claude is mounted read-only at /home/agent/.claude-host.
+# Syncs settings AND credentials so the container inherits the host's
+# auth (Google OAuth / Max subscription) without needing browser login.
 CLAUDE_HOST="/home/agent/.claude-host"
 CLAUDE_HOME="/home/agent/.claude"
 if [ -d "$CLAUDE_HOST" ]; then
     mkdir -p "$CLAUDE_HOME"
-    for f in settings.json settings.local.json; do
+    for f in settings.json settings.local.json .credentials.json; do
         if [ -f "$CLAUDE_HOST/$f" ] && [ ! -f "$CLAUDE_HOME/$f" ]; then
             cp "$CLAUDE_HOST/$f" "$CLAUDE_HOME/$f"
         fi
