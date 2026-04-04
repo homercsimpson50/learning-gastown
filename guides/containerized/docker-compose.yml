@@ -1,0 +1,131 @@
+# Gas Town — Containerized Setup
+#
+# Usage:
+#   GIT_USER="Your Name" GIT_EMAIL="you@example.com" docker compose up -d
+#   docker compose exec gastown gt mayor attach
+#
+# Prerequisites:
+#   - Build the gastown image first:
+#     cd <gastown-src> && docker build -t gastown:latest -f Dockerfile .
+#
+# Rig repos: add bind-mounts under the gastown service's volumes section.
+# Each rig maps to /gt/rigs/<name>/repo inside the container.
+#
+# Monorepo: mount once, then `gt rig add` each subproject pointing to
+# the subdirectory. See the guide for details.
+
+name: gastown
+
+services:
+  gastown:
+    image: gastown:latest
+    container_name: gastown
+    hostname: gastown
+
+    stdin_open: true
+    tty: true
+
+    # Security: drop all capabilities, add back only what's needed
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+
+    # Resource limits — prevent fork bombs and OOM
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+          pids: 512
+
+    environment:
+      IS_SANDBOX: 1
+      GIT_USER: ${GIT_USER:-TestUser}
+      GIT_EMAIL: ${GIT_EMAIL:-test@example.com}
+      # Telemetry: stream agent logs to VictoriaLogs sidecar
+      GT_OTEL_LOGS_URL: http://victoria-logs:9428/insert/opentelemetry/v1/logs
+      GT_LOG_AGENT_OUTPUT: "true"
+
+    volumes:
+      # Workspace root where GT is initialized
+      - gt-workspace:/gt
+
+      # Dolt data on a Docker volume (not macOS bind mount)
+      # to avoid journal corruption from VirtioFS fsync semantics.
+      - dolt-data:/gt/.dolt-data
+
+      # --- Rig repos (bind-mount from host) ---
+      # Standalone repos — one mount per rig:
+      # - ~/code/frontend:/gt/rigs/frontend/repo
+      # - ~/code/backend:/gt/rigs/backend/repo
+      #
+      # Monorepo — mount the root, then use `gt rig add` with subpaths:
+      # - ~/code/monorepo:/gt/rigs/monorepo/repo
+
+      # Claude auth (read-only — agents can't modify your login)
+      - ~/.claude:/home/agent/.claude:ro
+
+      # NOTE: Do NOT mount ~/.gitconfig — the entrypoint writes git config
+      # from GIT_USER/GIT_EMAIL env vars. A read-only mount blocks that.
+
+    ports:
+      - "${DASHBOARD_PORT:-8080}:8080"
+
+    networks:
+      - gt-net
+
+    depends_on:
+      victoria-logs:
+        condition: service_started
+
+    restart: unless-stopped
+
+  # --- Observability: VictoriaLogs ---
+  # Receives OTLP logs from GT, queryable via built-in VMUI.
+  # Open http://localhost:9428/select/vmui in your browser.
+  victoria-logs:
+    image: victoriametrics/victoria-logs:latest
+    container_name: gt-victoria-logs
+    hostname: victoria-logs
+    volumes:
+      - vlogs-data:/vlogs
+    command:
+      - "-storageDataPath=/vlogs"
+      - "-retentionPeriod=30d"
+    ports:
+      - "${VLOGS_PORT:-9428}:9428"
+    networks:
+      - gt-net
+    restart: unless-stopped
+
+  # --- Secrets Gateway ---
+  # Proxies GitHub/Jira/Slack API calls so agents never see raw tokens.
+  # Only reachable inside gt-net (not port-mapped to host).
+  gateway:
+    build:
+      context: ./gateway-sidecar
+    container_name: gt-gateway
+    hostname: gateway
+    volumes:
+      - ${SECRETS_FILE:-./secrets.env.example}:/secrets/secrets.env:ro
+    environment:
+      JIRA_ALLOWED_PROJECTS: ${JIRA_ALLOWED_PROJECTS:-}
+      GITHUB_ALLOWED_REPOS: ${GITHUB_ALLOWED_REPOS:-}
+      GATEWAY_TOKEN: ${GATEWAY_TOKEN:-}
+    networks:
+      - gt-net
+    restart: unless-stopped
+
+networks:
+  gt-net:
+    driver: bridge
+
+volumes:
+  gt-workspace:
+  dolt-data:
+  vlogs-data:

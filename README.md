@@ -632,7 +632,7 @@ Services: dolt (PID ..., :3307)  tmux (4 sessions)
 
 ## Guides
 
-- **[Running Gas Town in Containers](guides/containerized-gastown.md)** — How to run Gas Town inside Docker so agents can't wreck your work laptop. Covers Dockerfile, Docker Compose, persistent volumes, subscription auth, and daily workflow. Essential reading before running GT on a machine with corporate credentials.
+- **[Running Gas Town in Containers](guides/containerized/)** — Self-contained directory with docker-compose.yml, gateway sidecar, and full guide. Covers security review, observability (VictoriaLogs), monorepo support, and daily workflow. Essential reading before running GT on a machine with corporate credentials.
 
 ---
 

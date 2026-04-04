@@ -421,7 +421,7 @@ Homer asked: how do I run Gas Town in containers so I get the same experience (d
 
 ### The Solution
 
-I wrote a full containerization guide: [guides/containerized-gastown.md](guides/containerized-gastown.md)
+I wrote a full containerization guide: [guides/containerized/](guides/containerized/)
 
 The architecture:
 
@@ -480,6 +480,104 @@ Reviewed and improved [homercsimpson50/onion-claude](https://github.com/homercsi
 - **Added disclaimers** — dangerous permissions, Tor legality, breach-check ethics.
 - **Hardened code** — request timeouts (15s), input validation, rate limit handling, generic User-Agent, stricter bash error handling.
 - **Added Tor usage instructions** — architecture diagram, commands, troubleshooting.
+
+---
+
+## 2026-04-03: Day 1 (Part 4) — Actually Building and Testing Containerized Gas Town
+
+*Written by the Gas Town Mayor (Claude Opus 4.6)*
+
+### What Changed
+
+The Day 1 Part 3 chronicle entry documented the *guide* for containerized Gas Town. This entry documents **actually building, running, and security-reviewing it**.
+
+### What I Did
+
+**1. Discovered the real Dockerfile already exists**
+
+The gastown-src repo already has a production Dockerfile and docker-compose.yml. The guide had a theoretical setup that differed from reality:
+- Real base image: `docker/sandbox-templates:claude-code` (not `ubuntu:24.04`)
+- Real entrypoint: `docker-entrypoint.sh` with tini, auto-initializes GT on first start
+- Real compose: uses `dolt-data` volume on ext4 to avoid VirtioFS fsync corruption
+
+**2. Built the image and stood up the stack**
+
+Built `gastown:latest` from source (~5 min on arm64 Mac). Created a three-container docker-compose:
+- **gastown** — GT with all agents (tmux sessions sharing filesystem + Dolt)
+- **gt-victoria-logs** — OTLP telemetry backend with built-in web UI (VMUI)
+- **gt-gateway** — Flask proxy that holds API tokens, agents never see credentials
+
+Hit one crash-loop: mounting `~/.gitconfig:ro` blocks the entrypoint from writing git config. Fix: don't mount gitconfig, use `GIT_USER`/`GIT_EMAIL` env vars.
+
+**3. Verified the full stack works**
+
+All three containers running. GT initializes cleanly, mayor starts, VictoriaLogs receives OTLP telemetry from GT operations, gateway health check returns configured services. VMUI queryable at localhost:9428.
+
+**4. Comprehensive security review**
+
+Found **2 critical, 6 high, 15 medium severity issues**. Key findings:
+
+| Severity | Issue | Status |
+|----------|-------|--------|
+| CRITICAL | ~/.claude auth token readable by agents, exfiltrable via HTTP/DNS | Documented as known risk |
+| CRITICAL | Gateway SSRF via path traversal in api_path | **Fixed** — validate_path() rejects `..`, `//`, non-alphanumeric |
+| HIGH | Excessive capabilities (DAC_OVERRIDE, FOWNER, NET_RAW) | **Fixed** — stripped to CHOWN/SETUID/SETGID |
+| HIGH | No resource limits (fork bomb, OOM) | **Fixed** — pids:512, cpus:4, memory:4G |
+| HIGH | Jira allowlist bypass (endpoints without project keys) | **Fixed** — require project key, block admin/user endpoints |
+| HIGH | git credential.helper store (plaintext tokens) | Documented, gateway credential helper recommended |
+| HIGH | Scripts piped to bash in Dockerfile (supply chain) | Documented, checksum verification recommended |
+| MEDIUM | No read-only root filesystem | Documented with fix instructions |
+| MEDIUM | No seccomp/AppArmor profiles | Documented with fix instructions |
+| MEDIUM | DNS exfiltration not prevented | Documented as known risk |
+
+The updated guide includes all these findings in a Security Review section.
+
+**5. Updated the guide to be self-contained**
+
+Rewrote the containerization guide as `guides/containerized/README.md` — a self-contained directory with all files + documentation. Includes:
+- Quick start (build image → start compose → attach to mayor)
+- Rig setup for standalone repos and monorepos (with sparse checkout)
+- Observability (VictoriaLogs VMUI queries)
+- Gateway setup with security controls
+- Full security review with severity ratings
+- Troubleshooting section based on actual errors encountered
+
+### Key Architectural Insight: Why One Container
+
+GT agents are tmux sessions sharing a filesystem, Dolt DB, event bus, and IPC. Splitting polecats into separate containers would break all inter-agent communication. The container boundary isolates GT from the host, not agents from each other.
+
+### Monorepo Support
+
+GT supports monorepos via `--sparse-checkout` on `gt rig add`. For a repo with `projects/auth`, `projects/api`, `projects/web`:
+
+```bash
+gt rig add auth https://github.com/org/monorepo --sparse-checkout projects/auth,shared
+gt rig add api https://github.com/org/monorepo --sparse-checkout projects/api,shared
+```
+
+Each rig gets its own witness, refinery, and polecats — working on a sparse view of the same repo.
+
+### Observability Gap
+
+GT has two observability layers:
+1. **Work graph** (beads, slings, convoys) — visible via `gt feed`, `gt trail`, dashboard
+2. **Tool-level telemetry** (every agent tool call, thinking block, token usage) — streams via `gt agent-log` to OTLP backend
+
+Layer 2 exists as pipeline (`gt agent-log` → VictoriaLogs) but the human-readable frontend is barebones — just VMUI log queries. Custom Grafana dashboards are needed for real-time agent activity views. This is queued as a future project.
+
+### Files Created/Modified
+
+```
+learning-gastown/guides/
+├── README.md                             # Full guide (renders on GitHub)
+└── containerized/
+    ├── docker-compose.yml                # Three-container setup (GT + VLogs + Gateway)
+    ├── secrets.env.example               # Template for gateway secrets
+    └── gateway-sidecar/
+        ├── Dockerfile                    # Python 3.12 slim image
+        ├── server.py                     # Flask proxy with path validation, allowlists
+        └── requirements.txt              # Pinned deps
+```
 
 ---
 
