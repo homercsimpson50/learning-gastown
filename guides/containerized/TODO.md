@@ -25,3 +25,24 @@
 - No `/login` needed when using Bedrock — credentials come from env vars or AWS config
 - The keyring/gnome-keyring setup becomes optional (only needed for OAuth flow)
 - Gateway sidecar could potentially proxy Bedrock credentials too (like it does for GitHub/Jira)
+
+---
+
+## Agent observability TUI (`gt feed --agents`)
+
+**Priority:** High
+**Context:** The agent feed TUI (`gt feed --agents`) shows real-time agent tool-call activity inside the container. Polecat rust built the initial version on branch `feat/agent-observability-tui` but it still needs work.
+
+### Remaining work
+
+- Push the feature branch (blocked on repo write access — see mail thread `hq-wisp-2ux`)
+- Test inside the containerized setup end-to-end with VictoriaLogs
+- LLM-summarized log lines — compress raw tool calls into human-readable one-liners
+- Polish the TUI layout and key bindings
+- Upstream PR to `gastownhall/gastown` once stable
+
+### Notes
+
+- Source: `homercsimpson50/gastown@feat/agent-observability-tui`
+- Requires VictoriaLogs + `GT_OTEL_LOGS_URL` + `GT_LOG_AGENT_OUTPUT=true` (already in compose)
+- The README documents usage under Observability > Agent Observability TUI
