@@ -50,6 +50,8 @@ services:
       # Telemetry: stream agent logs to VictoriaLogs sidecar
       GT_OTEL_LOGS_URL: http://victoria-logs:9428/insert/opentelemetry/v1/logs
       GT_LOG_AGENT_OUTPUT: "true"
+      # Suppress metrics upload error (no VictoriaMetrics in this stack)
+      GT_OTEL_METRICS_URL: ""
 
     volumes:
       # Workspace root where GT is initialized
@@ -69,6 +71,9 @@ services:
 
       # Host Claude settings (read-only staging — entrypoint syncs into writable home)
       - ~/.claude:/home/agent/.claude-host:ro
+
+      # Host gh CLI credentials (read-only — entrypoint syncs for git push)
+      - ~/.config/gh:/home/agent/.config/gh-host:ro
 
       # Writable Claude home — persists credentials, sessions, and history
       - claude-data:/home/agent/.claude

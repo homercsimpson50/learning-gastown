@@ -473,7 +473,8 @@ gtc down && gtc up --repo ...
 
 Anyone using this setup needs:
 1. A Claude Pro/Max subscription authenticated on their host machine (`claude` → browser login → done)
-2. That's it. The container inherits their credentials automatically.
+2. GitHub CLI authenticated on their host machine (`gh auth login` → browser login → done)
+3. That's it. The container inherits both credentials automatically.
 
 No API keys, no tokens to manage, no secrets files. The container entrypoint handles everything.
 
@@ -507,17 +508,17 @@ Neither OAuth (Pro/Max) nor Bedrock stores long-lived static secrets in `~/.clau
 
 ## Git Authentication Inside the Container
 
-Agents need to push/pull from GitHub. Options:
+### Automatic (default — zero setup)
 
-### Option 1: GitHub CLI (simplest)
+The entrypoint syncs your host's `gh` CLI credentials (`~/.config/gh/hosts.yml`) into the container. The container can push/pull from GitHub immediately — no manual auth needed.
 
-```bash
-docker compose exec gastown gh auth login
-```
+**Prerequisites on host:** `gh auth login` (one time)
 
-Stores a token inside the container volume. Simple but the agent holds the raw token.
+The entrypoint also runs `gh auth setup-git` which configures git to use `gh` as a credential helper. This means `git push` and `git pull` just work inside the container.
 
-### Option 2: Gateway git credential helper (recommended)
+Like Claude credentials, the `gh` config is mounted read-only from the host and copied into the container on first start. It persists in the container across restarts.
+
+### Alternative: Gateway git credential helper (for shared/team setups)
 
 The gateway has a `/git/credential` endpoint that returns the GitHub token for push/pull. It's rate-limited (30 calls/min) and only reachable inside the Docker network.
 

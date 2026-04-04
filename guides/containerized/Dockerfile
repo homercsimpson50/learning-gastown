@@ -105,6 +105,20 @@ if [ -d "$CLAUDE_HOST" ]; then
     fi
 fi
 
+# --- Sync host gh CLI credentials for git push ---
+# Host ~/.config/gh is mounted read-only at /home/agent/.config/gh-host.
+# Copy hosts.yml so container can push to GitHub without re-authenticating.
+GH_HOST="/home/agent/.config/gh-host"
+GH_HOME="/home/agent/.config/gh"
+if [ -d "$GH_HOST" ] && [ -f "$GH_HOST/hosts.yml" ]; then
+    mkdir -p "$GH_HOME"
+    if [ ! -f "$GH_HOME/hosts.yml" ]; then
+        cp "$GH_HOST/hosts.yml" "$GH_HOME/hosts.yml"
+    fi
+    # Configure git to use gh for authentication
+    gh auth setup-git 2>/dev/null || true
+fi
+
 if [ ! -f /gt/mayor/town.json ]; then
     echo "Initializing Gas Town workspace at /gt..."
     /app/gastown/gt install /gt --git
