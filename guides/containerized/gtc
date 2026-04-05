@@ -422,12 +422,14 @@ cmd_unmount() {
 
     local selected=""
     if command -v fzf >/dev/null 2>&1; then
-        selected=$(printf '%s' "$mount_list" | fzf --multi \
-            --header="Space=toggle  Enter=confirm  Esc=cancel" \
+        # Tab to toggle selection, Enter to confirm
+        selected=$(echo "$mount_list" | fzf --multi \
+            --header="Tab=toggle  Enter=confirm  Esc=cancel" \
             --prompt="unmount> " \
             --marker="✓ " --pointer="▸" \
             --height=40% --reverse \
-            --border --border-label=" gtc unmount " || true)
+            --border --border-label=" gtc unmount ") || true
+        echo "[debug] fzf returned: '$selected'"
     else
         echo "$mount_list"
         echo ""
