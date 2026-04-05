@@ -70,17 +70,13 @@ The container boundary isolates **GT from your host**, not agents from each othe
 ### 1. Clone and set up
 
 ```bash
-# Clone this learning repo
-git clone https://github.com/homercsimpson50/learning-gastown.git ~/learning-gastown
-
-# Clone the Gas Town fork (has agent feed TUI + AI summary)
+# Clone both repos into ~/code/
+git clone https://github.com/homercsimpson50/learning-gastown.git ~/code/learning-gastown
 git clone https://github.com/homercsimpson50/gastown.git ~/code/gastown-src
-cd ~/code/gastown-src
-git checkout feat/agent-observability-tui
+cd ~/code/gastown-src && git checkout feat/agent-observability-tui
 
-# Add the gtc alias
-echo "alias gtc='~/learning-gastown/guides/containerized/gtc'" >> ~/.zshrc
-echo "alias gtcfeed='GT_OTEL_METRICS_URL= GT_OTEL_LOGS_URL= gt feed'" >> ~/.zshrc
+# Add the gtc alias (only thing that touches your shell config)
+echo "alias gtc='~/code/learning-gastown/guides/containerized/gtc'" >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -88,7 +84,7 @@ source ~/.zshrc
 
 ```bash
 cd ~/code/gastown-src
-docker build -t gastown:latest -f ~/learning-gastown/guides/containerized/Dockerfile .
+docker build -t gastown:latest -f ~/code/learning-gastown/guides/containerized/Dockerfile .
 ```
 
 ~5 minutes first time. Image contains Go, GT, BD, Dolt, Claude Code, tmux, gnome-keyring.
@@ -381,7 +377,7 @@ Instead of typing long docker compose commands, use `gtc` — a wrapper script i
 
 ```bash
 # Add to ~/.zshrc or ~/.bashrc:
-alias gtc='~/learning-gastown/guides/containerized/gtc'
+alias gtc='~/code/learning-gastown/guides/containerized/gtc'
 ```
 
 ### Starting with repos
@@ -422,7 +418,7 @@ This fetches the latest from `gastownhall/gastown`, updates your local main, reb
 
 ```bash
 cd ~/code/gastown-src && make build && make install
-docker build -t gastown:latest -f ~/learning-gastown/guides/containerized/Dockerfile .
+docker build -t gastown:latest -f ~/code/learning-gastown/guides/containerized/Dockerfile .
 gtc up  # recreate container with new image
 ```
 

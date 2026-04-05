@@ -41,7 +41,7 @@ Other options:
 ### 3. Test it
 
 ```bash
-cd ~/learning-gastown/guides/local-llm
+cd ~/code/learning-gastown/guides/local-llm
 ./test-summary.sh                # Uses sample agent events
 ./test-summary.sh --live         # Uses real events from local VictoriaLogs
 ./test-summary.sh --live http://localhost:9429/select/logsql/query  # Container VLogs

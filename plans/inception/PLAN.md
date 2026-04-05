@@ -29,12 +29,12 @@ containerized GT will try to reach the host's VLogs instead of its own sidecar.
 1. Build the gastown Docker image from the fork source (includes TUI changes)
    ```
    cd ~/gt/gastown/polecats/rust/gastown
-   docker build -t gastown:latest -f ~/learning-gastown/guides/containerized/Dockerfile .
+   docker build -t gastown:latest -f ~/code/learning-gastown/guides/containerized/Dockerfile .
    ```
 
 2. Start the compose stack
    ```
-   cd ~/learning-gastown/guides/containerized
+   cd ~/code/learning-gastown/guides/containerized
    GIT_USER="Homer Simpson" GIT_EMAIL="homer.c.simpson50@gmail.com" docker compose up -d
    ```
 
@@ -51,7 +51,7 @@ containerized GT will try to reach the host's VLogs instead of its own sidecar.
 
 1. Run the existing integration tests:
    ```
-   cd ~/learning-gastown/guides/containerized
+   cd ~/code/learning-gastown/guides/containerized
    bash test-container.sh
    ```
 
@@ -79,7 +79,7 @@ containerized GT will try to reach the host's VLogs instead of its own sidecar.
 3. Mount it into the container as a rig:
    ```yaml
    volumes:
-     - ~/inception-test:/gt/rigs/inception/repo
+     - ~/code/inception-test:/gt/rigs/inception/repo
    ```
 
 4. Inside the container:
@@ -120,7 +120,7 @@ containerized GT will try to reach the host's VLogs instead of its own sidecar.
 
 6. Local verification:
    ```
-   cd ~/inception-test
+   cd ~/code/inception-test
    git log --oneline -5
    go build ./...
    go test ./...
@@ -172,7 +172,7 @@ containerized GT will try to reach the host's VLogs instead of its own sidecar.
 3. Mount into container and add as rig:
    ```yaml
    volumes:
-     - ~/inception-monorepo:/gt/rigs/monorepo/repo
+     - ~/code/inception-monorepo:/gt/rigs/monorepo/repo
    ```
 
 4. Inside container, add the monorepo rig:
@@ -190,7 +190,7 @@ containerized GT will try to reach the host's VLogs instead of its own sidecar.
 
 8. Local verification:
    ```
-   cd ~/inception-monorepo
+   cd ~/code/inception-monorepo
    git log --oneline -10
    cd projects/01-api && go build ./...
    cd ../02-cli && go build ./...

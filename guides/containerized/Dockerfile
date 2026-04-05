@@ -2,7 +2,7 @@
 #
 # Build context must be the gastown source repo:
 #   cd <gastown-src> && docker build -t gastown:latest \
-#       -f ~/learning-gastown/guides/containerized/Dockerfile .
+#       -f ~/code/learning-gastown/guides/containerized/Dockerfile .
 FROM docker/sandbox-templates:claude-code
 
 ARG GO_VERSION=1.25.6

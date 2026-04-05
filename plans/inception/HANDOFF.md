@@ -25,8 +25,8 @@ This document tells the containerized mayor what to finish.
 - `homercsimpson50/inception-monorepo` — has working API + CLI (built by `claude -p`)
 
 ### Rigs (already added inside the container)
-- `inception` rig → mounted from `~/inception-test`
-- `monorepo` rig → mounted from `~/inception-monorepo`
+- `inception` rig → mounted from `~/code/inception-test`
+- `monorepo` rig → mounted from `~/code/inception-monorepo`
 
 ### Auth
 - `gh` CLI is authenticated inside the container
@@ -122,10 +122,10 @@ Include:
 ```bash
 # Rebuild image first (entrypoint now syncs OAuth credentials from host)
 cd ~/gt/gastown/polecats/rust/gastown
-docker build -t gastown:latest -f ~/learning-gastown/guides/containerized/Dockerfile .
+docker build -t gastown:latest -f ~/code/learning-gastown/guides/containerized/Dockerfile .
 
 # Start with all repos mounted (gtc handles the override file)
-gtc up --repo ~/inception-test --repo ~/inception-monorepo --repo ~/learning-gastown
+gtc up --repo ~/code/inception-test --repo ~/code/inception-monorepo --repo ~/code/learning-gastown
 
 # Attach to the containerized mayor
 gtc attach
