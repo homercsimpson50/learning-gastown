@@ -238,6 +238,137 @@ def git_credential():
                     "username": "x-access-token", "password": token})
 
 
+# --- Token Management ---
+# Allows the mayor to set/rotate tokens at runtime without restarting the gateway.
+# Tokens set via API override the secrets file values.
+
+@app.route("/tokens", methods=["GET"])
+def list_tokens():
+    """List which tokens are configured (names only, not values)."""
+    tokens = {}
+    for key in ["GITHUB_TOKEN", "JIRA_TOKEN", "JIRA_EMAIL", "JIRA_URL", "SLACK_TOKEN"]:
+        tokens[key] = "configured" if SECRETS.get(key) else "not set"
+    return jsonify(tokens)
+
+
+@app.route("/tokens/<key>", methods=["PUT"])
+def set_token(key):
+    """Set or rotate a token. Body: {"value": "token_value"}"""
+    allowed_keys = {"GITHUB_TOKEN", "JIRA_TOKEN", "JIRA_EMAIL", "JIRA_URL", "SLACK_TOKEN"}
+    if key not in allowed_keys:
+        return jsonify({"error": f"unknown token: {key}. Allowed: {sorted(allowed_keys)}"}), 400
+
+    data = request.get_json(silent=True)
+    if not data or "value" not in data:
+        return jsonify({"error": "body must contain {\"value\": \"...\"}"}), 400
+
+    old = "configured" if SECRETS.get(key) else "not set"
+    SECRETS[key] = data["value"]
+    logging.info(f"Token {key} updated (was: {old})")
+    return jsonify({"status": "updated", "key": key})
+
+
+@app.route("/tokens/<key>", methods=["DELETE"])
+def delete_token(key):
+    """Remove a token."""
+    if key in SECRETS:
+        del SECRETS[key]
+        logging.info(f"Token {key} removed")
+        return jsonify({"status": "removed", "key": key})
+    return jsonify({"error": f"{key} not set"}), 404
+
+
+# --- Token Validation ---
+
+@app.route("/tokens/validate", methods=["GET"])
+def validate_tokens():
+    """Check if configured tokens are actually valid by making test API calls."""
+    results = {}
+
+    # GitHub
+    gh_token = SECRETS.get("GITHUB_TOKEN")
+    if gh_token:
+        try:
+            resp = requests.get("https://api.github.com/user",
+                                headers={"Authorization": f"Bearer {gh_token}"},
+                                timeout=5)
+            if resp.status_code == 200:
+                user = resp.json().get("login", "unknown")
+                results["github"] = {"valid": True, "user": user}
+            else:
+                results["github"] = {"valid": False, "status": resp.status_code}
+        except Exception as e:
+            results["github"] = {"valid": False, "error": str(e)}
+    else:
+        results["github"] = {"valid": False, "error": "not configured"}
+
+    # Jira
+    jira_token = SECRETS.get("JIRA_TOKEN")
+    jira_email = SECRETS.get("JIRA_EMAIL")
+    jira_url = SECRETS.get("JIRA_URL")
+    if all([jira_token, jira_email, jira_url]):
+        try:
+            resp = requests.get(f"{jira_url}/rest/api/3/myself",
+                                auth=(jira_email, jira_token),
+                                timeout=5)
+            if resp.status_code == 200:
+                name = resp.json().get("displayName", "unknown")
+                results["jira"] = {"valid": True, "user": name}
+            else:
+                results["jira"] = {"valid": False, "status": resp.status_code}
+        except Exception as e:
+            results["jira"] = {"valid": False, "error": str(e)}
+    else:
+        results["jira"] = {"valid": False, "error": "not fully configured"}
+
+    # Slack
+    slack_token = SECRETS.get("SLACK_TOKEN")
+    if slack_token:
+        try:
+            resp = requests.post("https://slack.com/api/auth.test",
+                                 headers={"Authorization": f"Bearer {slack_token}"},
+                                 timeout=5)
+            data = resp.json()
+            if data.get("ok"):
+                results["slack"] = {"valid": True, "user": data.get("user", "unknown")}
+            else:
+                results["slack"] = {"valid": False, "error": data.get("error", "unknown")}
+        except Exception as e:
+            results["slack"] = {"valid": False, "error": str(e)}
+    else:
+        results["slack"] = {"valid": False, "error": "not configured"}
+
+    return jsonify(results)
+
+
+# --- Auto-configure from host gh CLI ---
+
+@app.route("/tokens/import-gh", methods=["POST"])
+def import_gh_token():
+    """Import GitHub token from gh CLI auth. Call from inside gastown container:
+       TOKEN=$(gh auth token) && curl -X POST gateway:9999/tokens/import-gh -H 'Content-Type: application/json' -d "{\"token\":\"$TOKEN\"}"
+    """
+    data = request.get_json(silent=True)
+    if not data or "token" not in data:
+        return jsonify({"error": "body must contain {\"token\": \"...\"}"}), 400
+
+    token = data["token"]
+    # Validate the token before accepting
+    try:
+        resp = requests.get("https://api.github.com/user",
+                            headers={"Authorization": f"Bearer {token}"},
+                            timeout=5)
+        if resp.status_code != 200:
+            return jsonify({"error": "invalid token", "status": resp.status_code}), 400
+        user = resp.json().get("login", "unknown")
+    except Exception as e:
+        return jsonify({"error": f"validation failed: {e}"}), 400
+
+    SECRETS["GITHUB_TOKEN"] = token
+    logging.info(f"GitHub token imported from gh CLI (user: {user})")
+    return jsonify({"status": "imported", "user": user})
+
+
 # --- Health ---
 
 @app.route("/health")

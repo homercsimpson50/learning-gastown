@@ -101,15 +101,21 @@ gtc up
 
 Three containers start: gastown (GT + agents), gt-victoria-logs (telemetry), gt-gateway (API proxy).
 
-### 4. First-time setup (one time only)
+### 4. Set up auth (one time)
+
+```bash
+gtc auth
+```
+
+This imports your host's GitHub token into the gateway, configures the git credential helper inside the container, and validates all tokens. Agents can push to GitHub through the gateway — tokens never touch disk inside the container.
+
+### 5. Attach to the Mayor
 
 ```bash
 gtc attach
 ```
 
-On first attach, Claude Code shows a theme picker — select Dark mode, press Enter. Auth is inherited from your host's Claude and GitHub credentials automatically.
-
-Detach with `Ctrl-B D`.
+On first attach, Claude Code shows a theme picker — select Dark mode, press Enter. Detach with `Ctrl-B D`.
 
 ### 5. Mount repos and work
 

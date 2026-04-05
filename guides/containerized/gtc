@@ -301,6 +301,62 @@ cmd_mounts() {
     fi
 }
 
+cmd_auth() {
+    echo -e "${BOLD}Setting up auth for containerized GT...${NC}"
+
+    # 1. Import gh token into gateway
+    local gh_token
+    gh_token=$(gh auth token 2>/dev/null) || die "gh not authenticated on host. Run: gh auth login"
+
+    echo -e "  Importing GitHub token into gateway..."
+    local result
+    result=$(docker compose -f "$COMPOSE_FILE" exec -T gastown \
+        curl -sf -X POST gateway:9999/tokens/import-gh \
+        -H 'Content-Type: application/json' \
+        -d "{\"token\":\"$gh_token\"}" 2>&1) || die "Gateway not reachable. Is the stack running?"
+
+    local user
+    user=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('user','?'))" 2>/dev/null)
+    echo -e "  ${GREEN}GitHub:${NC} authenticated as ${BOLD}$user${NC}"
+
+    # 2. Set up git credential helper in container (uses gateway)
+    echo -e "  Configuring git credential helper..."
+    docker compose -f "$COMPOSE_FILE" exec -T gastown bash -c '
+        cat > /usr/local/bin/git-credential-gateway <<CRED
+#!/bin/bash
+if [[ "\$1" == "get" ]]; then
+    RESP=\$(curl -s gateway:9999/git/credential 2>/dev/null)
+    echo "protocol=\$(echo "\$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"protocol\"])")"
+    echo "host=\$(echo "\$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"host\"])")"
+    echo "username=\$(echo "\$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"username\"])")"
+    echo "password=\$(echo "\$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"password\"])")"
+fi
+CRED
+        chmod +x /usr/local/bin/git-credential-gateway
+        git config --global credential.helper /usr/local/bin/git-credential-gateway
+    ' 2>&1
+
+    echo -e "  ${GREEN}Git:${NC} credential helper configured (tokens via gateway, never on disk)"
+
+    # 3. Validate
+    echo ""
+    echo -e "  Validating tokens..."
+    local validation
+    validation=$(docker compose -f "$COMPOSE_FILE" exec -T gastown \
+        curl -sf gateway:9999/tokens/validate 2>&1)
+    echo "$validation" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for svc, info in d.items():
+    status = '✓' if info.get('valid') else '✗'
+    detail = info.get('user', info.get('error', ''))
+    print(f'  {status} {svc}: {detail}')
+" 2>/dev/null
+
+    echo ""
+    echo -e "${GREEN}Auth complete.${NC} Agents can now push to GitHub via the gateway."
+}
+
 cmd_sync() {
     echo -e "${BOLD}Syncing gastown fork with upstream...${NC}"
 
@@ -364,6 +420,7 @@ case "$cmd" in
     mounts)   cmd_mounts ;;
     exec)     cmd_exec "$@" ;;
     shell)    cmd_shell ;;
+    auth)     cmd_auth ;;
     test)     cmd_test ;;
     sync)     cmd_sync ;;
     help|-h|--help)
@@ -373,6 +430,7 @@ case "$cmd" in
         echo "  gtc up [--repo <path>] [--monorepo <path> -p <num>]"
         echo "  gtc down"
         echo "  gtc status"
+        echo "  gtc auth            Set up GitHub/Jira auth via gateway"
         echo "  gtc attach          Attach to Mayor (Ctrl-B D to detach)"
         echo "  gtc feed [flags]    Run gt feed (e.g. gtc feed --agents)"
         echo "  gtc exec <cmd>      Run command in container"
