@@ -202,11 +202,22 @@ cmd_up() {
 }
 
 cmd_down() {
+    # Block -v/--volumes to prevent accidental data loss (Claude auth, GT workspace, beads)
+    for arg in "$@"; do
+        case "$arg" in
+            -v|--volumes)
+                die "Refusing to delete volumes (would destroy Claude auth, GT workspace, beads data).
+  To really delete everything: docker compose -f $COMPOSE_FILE down -v"
+                ;;
+        esac
+    done
+
     local compose_args=("-f" "$COMPOSE_FILE")
     if [ -f "$OVERRIDE_FILE" ]; then
         compose_args+=("-f" "$OVERRIDE_FILE")
     fi
     docker compose "${compose_args[@]}" down "$@"
+    echo -e "  ${GREEN}Volumes preserved.${NC} Data (auth, workspace, beads) persists for next gtc up."
 }
 
 cmd_status() {
