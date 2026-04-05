@@ -395,10 +395,8 @@ cmd_mount() {
     echo -e "${GREEN}Added:${NC} $name → $path"
     echo -e "  Container path: /gt/rigs/$name/repo"
     echo ""
-    echo -e "  Restarting container to apply mount..."
-    _apply_mounts_and_restart
-    echo ""
-    echo -e "  Tell the mayor: ${DIM}set up $name as a rig${NC}"
+    echo -e "  Run ${BOLD}gtc up${NC} to apply (restarts container)."
+    echo -e "  Then tell the mayor: ${DIM}set up $name as a rig${NC}"
 }
 
 cmd_unmount() {
