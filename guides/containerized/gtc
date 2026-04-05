@@ -320,6 +320,12 @@ cmd_feed() {
     GT_OTEL_LOGS_URL= \
     GT_FEED_AI="${ai_enabled}" \
     gt feed "${feed_args[@]}"
+
+    # Cleanup: stop Ollama after feed exits to free memory
+    if [ -n "$ai_enabled" ]; then
+        echo -e "  Stopping Ollama to free memory..."
+        brew services stop ollama 2>/dev/null || pkill -f ollama 2>/dev/null
+    fi
 }
 
 cmd_exec() {
