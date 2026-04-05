@@ -423,6 +423,7 @@ cmd_unmount() {
     fi
 
     # Interactive selection
+    local selected_paths=()
     if command -v fzf >/dev/null 2>&1; then
         local selected
         selected=$(echo "$mount_list" | fzf --multi \
@@ -433,11 +434,11 @@ cmd_unmount() {
 
         [ -z "$selected" ] && { echo "Cancelled."; return; }
 
-        echo "$selected" | while IFS= read -r line; do
+        while IFS= read -r line; do
             local path
             path=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
-            _remove_mount_by_path "$path"
-        done
+            selected_paths+=("$path")
+        done <<< "$selected"
     else
         echo -e "${BOLD}Configured mounts:${NC}"
         local i=1
@@ -456,12 +457,18 @@ cmd_unmount() {
             num=$(echo "$num" | tr -d ' ')
             local idx=$((num - 1))
             if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#path_array[@]}" ]; then
-                _remove_mount_by_path "${path_array[$idx]}"
+                selected_paths+=("${path_array[$idx]}")
             fi
         done
     fi
 
-    _apply_mounts_and_restart
+    # Remove selected mounts from config (no subshell)
+    for path in "${selected_paths[@]}"; do
+        _remove_mount_by_path "$path"
+    done
+
+    echo ""
+    echo -e "Run ${BOLD}gtc up${NC} to apply changes (restarts container)."
 }
 
 _remove_mount() {
