@@ -62,12 +62,9 @@ services:
       - dolt-data:/gt/.dolt-data
 
       # --- Rig repos ---
-      # Hot-mountable staging dir: symlink repos into the rigs dir on the host.
-      # Container sees them immediately — no restart needed.
-      # Use: gtc mount ~/code/myproject
-      #      gtc unmount myproject
-      # Configure dir: GTC_RIGS_DIR in ~/.gtc.conf (default: ~/.gtc-rigs)
-      - ${GTC_RIGS_DIR:-~/.gtc-rigs}:/gt/rigs-host:rw
+      # Managed by gtc mount/unmount. Mounts are stored in override file.
+      # gtc mount adds a bind-mount line and soft-restarts the container.
+      # Volumes persist across restarts — no data loss.
 
       # Host Claude settings (read-only staging — entrypoint syncs into writable home)
       - ~/.claude:/home/agent/.claude-host:ro

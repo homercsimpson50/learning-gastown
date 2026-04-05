@@ -59,49 +59,79 @@ The container boundary isolates **GT from your host**, not agents from each othe
 ## Prerequisites
 
 - Docker Desktop (macOS/Windows) or Docker Engine (Linux)
-- The Gas Town source repo cloned locally
-- Claude Code CLI subscription (Pro/Max)
+- Claude Code CLI authenticated on host (`claude` → browser login → done)
+- GitHub CLI authenticated on host (`gh auth login` → done)
+- Homebrew (macOS) for VictoriaLogs and Ollama
 
 ---
 
-## Quick Start
+## Quick Start (from scratch on a new machine)
 
-### 1. Build the Gas Town image
+### 1. Clone and set up
 
 ```bash
-cd ~/code/gastown-src   # or wherever you cloned the gastown repo
+# Clone this learning repo
+git clone https://github.com/homercsimpson50/learning-gastown.git ~/learning-gastown
+
+# Clone the Gas Town fork (has agent feed TUI + AI summary)
+git clone https://github.com/homercsimpson50/gastown.git ~/code/gastown-src
+cd ~/code/gastown-src
+git checkout feat/agent-observability-tui
+
+# Add the gtc alias
+echo "alias gtc='~/learning-gastown/guides/containerized/gtc'" >> ~/.zshrc
+echo "alias gtcfeed='GT_OTEL_METRICS_URL= GT_OTEL_LOGS_URL= gt feed'" >> ~/.zshrc
+source ~/.zshrc
+```
+
+### 2. Build the image
+
+```bash
+cd ~/code/gastown-src
 docker build -t gastown:latest -f ~/learning-gastown/guides/containerized/Dockerfile .
 ```
 
-This takes ~5 minutes the first time. The image is ~4.5GB and contains everything pre-compiled (Go, Dolt, Claude Code, GT, BD, tmux) plus `gnome-keyring` and `dbus` for Claude Code credential persistence. Container startup is instant after that.
+~5 minutes first time. Image contains Go, GT, BD, Dolt, Claude Code, tmux, gnome-keyring.
 
-### 2. Configure and start
+### 3. Start the stack
 
 ```bash
-cd ~/learning-gastown/guides/containerized
-
-# Edit docker-compose.yml to add your rig repos as bind-mounts (see below)
-
-# Start all services
-GIT_USER="Your Name" GIT_EMAIL="you@example.com" docker compose up -d
+gtc up
 ```
 
-### 3. Attach to the Mayor
+Three containers start: gastown (GT + agents), gt-victoria-logs (telemetry), gt-gateway (API proxy).
+
+### 4. First-time setup (one time only)
 
 ```bash
-docker compose exec gastown gt mayor start
-docker compose exec gastown gt mayor attach
-# Detach with Ctrl-B D
+gtc attach
 ```
 
-### 4. Add rigs (inside the container)
+On first attach, Claude Code shows a theme picker — select Dark mode, press Enter. Auth is inherited from your host's Claude and GitHub credentials automatically.
+
+Detach with `Ctrl-B D`.
+
+### 5. Mount repos and work
 
 ```bash
-docker compose exec gastown bash
+# Mount your project repos (no restart needed)
+gtc mount ~/code/my-frontend
+gtc mount ~/code/my-api
 
-# Inside the container:
-gt rig add myproject /gt/rigs/myproject/repo
-gt up
+# Attach and tell the mayor what to do
+gtc attach
+# > "Set up my-frontend as a rig and build a login page"
+```
+
+### 6. Watch agents work (optional)
+
+```bash
+# Install local LLM for AI summaries (optional, $0 cost)
+brew install ollama && brew services start ollama && ollama pull qwen2.5:1.5b
+
+# Watch the agent feed with AI summary panel
+gtcfeed --agents
+# Press 's' for AI summary, 'r' to filter by rig
 ```
 
 ---
