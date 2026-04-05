@@ -406,69 +406,58 @@ cmd_unmount() {
         return
     fi
 
-    # Build list of mounted paths with names
-    local mount_list=""
-    for path in $current_mounts; do
-        local name="$(basename "$path")"
-        mount_list+="$name ($path)"$'\n'
-    done
-    mount_list=$(echo "$mount_list" | sed '/^$/d')
-
+    # Direct name
     if [ -n "${1:-}" ]; then
-        # Direct name provided
         _remove_mount "$1"
+        echo -e "Run ${BOLD}gtc up${NC} to apply."
         return
     fi
 
-    # Interactive selection
-    local selected_paths=()
+    # Build fzf list
+    local mount_list=""
+    for p in $current_mounts; do
+        mount_list+="$(basename "$p") ($p)"$'\n'
+    done
+    mount_list=$(printf '%s' "$mount_list" | sed '/^$/d')
+
+    local selected=""
     if command -v fzf >/dev/null 2>&1; then
-        local selected
-        selected=$(echo "$mount_list" | fzf --multi \
-            --header="Space to toggle, Enter to confirm, Esc to cancel" \
+        selected=$(printf '%s' "$mount_list" | fzf --multi \
+            --header="Space=toggle  Enter=confirm  Esc=cancel" \
             --prompt="unmount> " \
-            --marker="✓" --pointer="▸" \
+            --marker="✓ " --pointer="▸" \
             --height=40% --reverse \
-            --bind="space:toggle" \
-            --border --border-label=" gtc unmount ")
-
-        [ -z "$selected" ] && { echo "Cancelled."; return; }
-
-        while IFS= read -r line; do
-            local path
-            path=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
-            selected_paths+=("$path")
-        done <<< "$selected"
+            --border --border-label=" gtc unmount " || true)
     else
-        echo -e "${BOLD}Configured mounts:${NC}"
-        local i=1
-        local path_array=()
-        for path in $current_mounts; do
-            echo -e "  $i) $(basename "$path") → $path"
-            path_array+=("$path")
-            i=$((i + 1))
-        done
+        echo "$mount_list"
         echo ""
-        read -r -p "Enter numbers to remove (comma-separated, or 'q' to cancel): " selection
-        [ "$selection" = "q" ] && return
-
-        IFS=',' read -ra nums <<< "$selection"
-        for num in "${nums[@]}"; do
-            num=$(echo "$num" | tr -d ' ')
-            local idx=$((num - 1))
-            if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#path_array[@]}" ]; then
-                selected_paths+=("${path_array[$idx]}")
-            fi
-        done
+        read -r -p "Name to remove (or 'q' to cancel): " selected
+        [ "$selected" = "q" ] && return
+        # Treat as direct name
+        _remove_mount "$selected"
+        echo -e "Run ${BOLD}gtc up${NC} to apply."
+        return
     fi
 
-    # Remove selected mounts from config (no subshell)
-    for path in "${selected_paths[@]}"; do
-        _remove_mount_by_path "$path"
-    done
+    if [ -z "$selected" ]; then
+        echo "Cancelled."
+        return
+    fi
 
-    echo ""
-    echo -e "Run ${BOLD}gtc up${NC} to apply changes (restarts container)."
+    # Process each selected line
+    local removed=0
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        local rmpath
+        rmpath=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
+        _remove_mount_by_path "$rmpath"
+        removed=$((removed + 1))
+    done <<< "$selected"
+
+    if [ "$removed" -gt 0 ]; then
+        echo ""
+        echo -e "Removed $removed mount(s). Run ${BOLD}gtc up${NC} to apply."
+    fi
 }
 
 _remove_mount() {
