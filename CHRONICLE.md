@@ -856,6 +856,70 @@ The conclusion: mounting `~/code/` is safe because the mayor can read (needed fo
 
 Full writeup in [SECURITY.md](guides/containerized/SECURITY.md) under "Defense in Depth: Three Walls".
 
+### Gateway Token Management and `gtc auth`
+
+Built token management into the gateway sidecar and a `gtc auth` command:
+
+**Gateway endpoints (new):**
+- `GET /tokens` — list configured tokens
+- `PUT /tokens/<key>` — set/rotate at runtime
+- `DELETE /tokens/<key>` — remove
+- `GET /tokens/validate` — test tokens against live APIs
+- `POST /tokens/import-gh` — import from host's `gh` CLI
+
+**`gtc auth` flow:**
+1. Reads host's `gh auth token`
+2. Posts to gateway `/tokens/import-gh` (validates against GitHub API)
+3. Writes `git-credential-gateway` helper script inside container
+4. Configures `git config --global credential.helper` to use it
+5. Validates all tokens and shows status
+
+Result: containerized agents push to GitHub via the gateway. Tokens never on disk inside the GT container.
+
+**Tested:** Mayor committed a change to inception-test README and pushed successfully from inside the container through the gateway credential helper.
+
+### Claude Code Onboarding Bug
+
+Spent significant time trying to eliminate the theme picker that appears on every container restart. Investigated:
+- `hasCompletedOnboarding: true` in `settings.json` — ignored
+- Persistent volumes for `~/.claude/`, `~/.local/state/claude/`, `~/.local/share/claude/` — all mounted, state persists, still shows
+- `claude -p` (print mode) — works without onboarding, but interactive mode always shows the wizard
+
+**Root cause:** Claude Code 2.1.92 does not persist onboarding completion state across interactive sessions. It's per-process, not per-installation. The `hasCompletedOnboarding` flag and stored credentials are not checked during the interactive TUI startup path.
+
+**Workaround:** Press Enter once through the theme picker after each `gtc up`. This is a Claude Code bug, not a GT or container issue.
+
+### Mount Strategy: `~/code/` Default
+
+After iterating through three approaches:
+1. ~~Per-repo mounts via symlinks~~ — Docker doesn't follow symlinks through bind mounts
+2. ~~Per-repo mounts via override file~~ — requires container restart, kills mayor session
+3. **Parent directory mount** — `~/code/` mounted once, all repos instantly accessible
+
+The parent directory approach won because:
+- Zero restarts when adding repos
+- No session loss
+- Three Walls security model makes it safe (container isolation + worktree isolation + gateway token isolation)
+- `gtc mount` is just a convenience check, not a mutation
+
+### `gtc` CLI Final State
+
+| Command | Description |
+|---------|-------------|
+| `gtc up` | Start/restart containers |
+| `gtc down` | Stop (preserves volumes, blocks `-v`) |
+| `gtc attach` | Mayor session (Ctrl-B D to detach) |
+| `gtc auth` | Import gh token → gateway → credential helper |
+| `gtc feed --agents` | Agent activity feed (local binary, container VLogs) |
+| `gtc feed --agents --ai` | Feed + Ollama AI summary (auto-installs on first use) |
+| `gtc mount <path>` | Check repo is accessible under `~/code/` |
+| `gtc mounts` | List available repos |
+| `gtc unmount` | Interactive fzf rig removal |
+| `gtc exec <cmd>` | Run command in container |
+| `gtc shell` | Bash inside container |
+| `gtc test` | Run 42+ integration tests |
+| `gtc sync` | Sync fork with upstream gastown |
+
 ---
 
 *This chronicle will be updated as exploration continues.*

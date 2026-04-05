@@ -196,6 +196,12 @@ cmd_up() {
     echo ""
     generate_override "${mounts[@]+"${mounts[@]}"}"
 
+    # Export config vars so docker-compose.yml picks them up
+    [ -n "${GITHUB_ALLOWED_REPOS:-}" ] && export GITHUB_ALLOWED_REPOS
+    [ -n "${JIRA_ALLOWED_PROJECTS:-}" ] && export JIRA_ALLOWED_PROJECTS
+    [ -n "${SECRETS_FILE:-}" ] && export SECRETS_FILE
+    [ -n "${GTC_CODE_DIR:-}" ] && export GTC_CODE_DIR
+
     # Build compose command
     local compose_args=("-f" "$COMPOSE_FILE")
     if [ -f "$OVERRIDE_FILE" ]; then
@@ -547,18 +553,19 @@ cmd_auth() {
     # 2. Set up git credential helper in container (uses gateway)
     echo -e "  Configuring git credential helper..."
     docker compose -f "$COMPOSE_FILE" exec -T gastown bash -c '
-        cat > /usr/local/bin/git-credential-gateway <<CRED
+        mkdir -p /home/agent/.local/bin
+        cat > /home/agent/.local/bin/git-credential-gateway <<'\''CRED'\''
 #!/bin/bash
-if [[ "\$1" == "get" ]]; then
-    RESP=\$(curl -s gateway:9999/git/credential 2>/dev/null)
-    echo "protocol=\$(echo "\$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"protocol\"])")"
-    echo "host=\$(echo "\$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"host\"])")"
-    echo "username=\$(echo "\$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"username\"])")"
-    echo "password=\$(echo "\$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"password\"])")"
+if [[ "$1" == "get" ]]; then
+    RESP=$(curl -s gateway:9999/git/credential 2>/dev/null)
+    echo "protocol=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"protocol\"])")"
+    echo "host=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"host\"])")"
+    echo "username=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"username\"])")"
+    echo "password=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)[\"password\"])")"
 fi
 CRED
-        chmod +x /usr/local/bin/git-credential-gateway
-        git config --global credential.helper /usr/local/bin/git-credential-gateway
+        chmod +x /home/agent/.local/bin/git-credential-gateway
+        git config --global credential.helper /home/agent/.local/bin/git-credential-gateway
     ' 2>&1
 
     echo -e "  ${GREEN}Git:${NC} credential helper configured (tokens via gateway, never on disk)"
