@@ -309,12 +309,27 @@ cmd_unmount() {
 cmd_mounts() {
     echo -e "${BOLD}Code directory:${NC} $CODE_DIR → /gt/rigs-host/"
     echo ""
-    echo -e "${BOLD}Available repos:${NC}"
+
+    # Show registered rigs from the container
+    echo -e "${BOLD}Registered rigs:${NC}"
+    local rigs
+    rigs=$(docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig list 2>/dev/null) || rigs=""
+    if [ -n "$rigs" ]; then
+        echo "$rigs" | sed 's/^/  /'
+    else
+        echo "  (none — tell the mayor to set up rigs)"
+    fi
+
+    echo ""
+    echo -e "${BOLD}Available repos (under $CODE_DIR):${NC}"
     if [ -d "$CODE_DIR" ]; then
         for dir in "$CODE_DIR"/*/; do
             [ -d "$dir/.git" ] && echo -e "  ${GREEN}$(basename "$dir")${NC}"
         done
     fi
+    echo ""
+    echo -e "  Mount: ${DIM}gtc mount ~/code/<repo>${NC}"
+    echo -e "  Then tell the mayor to register it as a rig."
 }
 
 cmd_auth() {
