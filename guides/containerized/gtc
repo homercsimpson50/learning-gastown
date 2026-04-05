@@ -429,7 +429,7 @@ cmd_unmount() {
             --marker="✓ " --pointer="▸" \
             --height=40% --reverse \
             --border --border-label=" gtc unmount ") || true
-        echo "[debug] fzf returned: '$selected'"
+        true  # fzf done
     else
         echo "$mount_list"
         echo ""
@@ -448,12 +448,10 @@ cmd_unmount() {
 
     # Process each selected line
     local removed=0
-    echo "[debug] processing selected lines..."
     while IFS= read -r line; do
         [ -z "$line" ] && continue
         local rmpath
         rmpath=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
-        echo "[debug] removing path: '$rmpath'"
         _remove_mount_by_path "$rmpath"
         removed=$((removed + 1))
     done <<< "$selected"
@@ -483,7 +481,8 @@ _remove_mount_by_path() {
     if [ -f "$GTC_CONFIG" ]; then
         # Remove path from GTC_MOUNTS in config
         local new_mounts
-        new_mounts=$(echo "${GTC_MOUNTS:-}" | tr ' ' '\n' | grep -v "^${path}$" | tr '\n' ' ' | sed 's/ $//')
+        new_mounts=$(echo "${GTC_MOUNTS:-}" | tr ' ' '\n' | grep -v "^${path}$" || true)
+        new_mounts=$(echo "$new_mounts" | tr '\n' ' ' | sed 's/ $//')
         sed -i '' "s|^GTC_MOUNTS=.*|GTC_MOUNTS=\"$new_mounts\"|" "$GTC_CONFIG"
         # Re-source to update in-memory
         GTC_MOUNTS="$new_mounts"
