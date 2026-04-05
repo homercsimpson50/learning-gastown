@@ -68,7 +68,7 @@ tell application "iTerm2"
             write text "cd ~/code"
         end tell
         tell feedPane
-            write text "$FEED_CMD"
+            write text "cd ~/gt && $FEED_CMD"
         end tell
     end tell
 
