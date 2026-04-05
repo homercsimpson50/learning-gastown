@@ -367,10 +367,83 @@ cmd_mount() {
 }
 
 cmd_unmount() {
-    local name="${1:-}"
-    [ -n "$name" ] || die "Usage: gtc unmount <name>"
-    echo -e "Tell the mayor: ${DIM}remove the $name rig${NC}"
-    echo -e "  Or: ${DIM}gtc exec gt rig remove $name${NC}"
+    # Get registered rigs from container
+    local rigs
+    rigs=$(docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig list --json 2>/dev/null \
+        | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for r in data.get('rigs', data) if isinstance(data, dict) else data:
+        name = r.get('name', r) if isinstance(r, dict) else r
+        print(name)
+except: pass
+" 2>/dev/null)
+
+    # Fallback: parse text output
+    if [ -z "$rigs" ]; then
+        rigs=$(docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig list 2>/dev/null \
+            | grep -oE '^\s*[a-zA-Z0-9_-]+' | sed 's/^[[:space:]]*//' \
+            | grep -v "^Rigs\|^$")
+    fi
+
+    if [ -z "$rigs" ]; then
+        echo "No rigs registered."
+        return
+    fi
+
+    # Interactive selection
+    if [ -n "${1:-}" ]; then
+        # Direct name provided
+        local name="$1"
+        echo -e "Removing rig ${BOLD}$name${NC}..."
+        docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig remove "$name" 2>&1
+        return
+    fi
+
+    # Interactive: use fzf if available, otherwise numbered list
+    if command -v fzf >/dev/null 2>&1; then
+        local selected
+        selected=$(echo "$rigs" | fzf --multi \
+            --header="Select rigs to remove (Tab to toggle, Enter to confirm, Esc to cancel)" \
+            --prompt="unmount> " \
+            --height=40% --reverse \
+            --border --border-label=" gtc unmount ")
+
+        if [ -z "$selected" ]; then
+            echo "Cancelled."
+            return
+        fi
+
+        echo "$selected" | while IFS= read -r name; do
+            echo -e "Removing rig ${BOLD}$name${NC}..."
+            docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig remove "$name" 2>&1
+        done
+    else
+        # Fallback: numbered list
+        echo -e "${BOLD}Registered rigs:${NC}"
+        local i=1
+        local rig_array=()
+        while IFS= read -r name; do
+            echo -e "  $i) $name"
+            rig_array+=("$name")
+            i=$((i + 1))
+        done <<< "$rigs"
+        echo ""
+        read -r -p "Enter numbers to remove (comma-separated, or 'q' to cancel): " selection
+        [ "$selection" = "q" ] && return
+
+        IFS=',' read -ra nums <<< "$selection"
+        for num in "${nums[@]}"; do
+            num=$(echo "$num" | tr -d ' ')
+            local idx=$((num - 1))
+            if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#rig_array[@]}" ]; then
+                local name="${rig_array[$idx]}"
+                echo -e "Removing rig ${BOLD}$name${NC}..."
+                docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig remove "$name" 2>&1
+            fi
+        done
+    fi
 }
 
 cmd_mounts() {
