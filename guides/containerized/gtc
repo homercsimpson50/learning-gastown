@@ -190,15 +190,12 @@ cmd_up() {
 
     echo ""
     echo -e "${GREEN}Containers running.${NC}"
-    if [ ${#mounts[@]} -gt 0 ]; then
-        echo ""
-        echo "Next: add rigs inside the container:"
-        echo -e "  ${DIM}gtc exec gt rig add <name> /gt/rigs/<name>/repo --adopt${NC}"
-    fi
     echo ""
+    cmd_mounts
+    echo ""
+    echo -e "  gtc auth      — Set up GitHub/Jira auth"
     echo -e "  gtc attach    — Mayor session"
-    echo -e "  gtc feed      — Activity dashboard"
-    echo -e "  gtc shell     — Container shell"
+    echo -e "  gtc feed --agents  — Watch agent activity"
 }
 
 cmd_down() {
@@ -247,7 +244,15 @@ cmd_attach() {
 }
 
 cmd_feed() {
-    docker compose -f "$COMPOSE_FILE" exec -e GT_VLOGS_QUERY_URL=http://victoria-logs:9428/select/logsql/query gastown gt feed "$@"
+    # Detect container VLogs port
+    local vlogs_port
+    vlogs_port=$(docker inspect gt-victoria-logs --format '{{range $p,$conf := .NetworkSettings.Ports}}{{if eq $p "9428/tcp"}}{{(index $conf 0).HostPort}}{{end}}{{end}}' 2>/dev/null || echo "9428")
+
+    # Run local gt binary (has summary feature) pointed at container VLogs
+    GT_VLOGS_QUERY_URL="http://localhost:${vlogs_port}/select/logsql/query" \
+    GT_OTEL_METRICS_URL= \
+    GT_OTEL_LOGS_URL= \
+    gt feed "$@"
 }
 
 cmd_exec() {
