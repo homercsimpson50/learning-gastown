@@ -62,9 +62,10 @@ services:
       - dolt-data:/gt/.dolt-data
 
       # --- Rig repos ---
-      # Managed by gtc mount/unmount. Mounts are stored in override file.
-      # gtc mount adds a bind-mount line and soft-restarts the container.
-      # Volumes persist across restarts — no data loss.
+      # Host code directory mounted once. gtc mount/unmount registers repos
+      # with the mayor — no container restart needed.
+      # Configure: GTC_CODE_DIR in ~/.gtc.conf (default: ~/code)
+      - ${GTC_CODE_DIR:-~/code}:/gt/rigs-host:rw
 
       # Host Claude settings (read-only staging — entrypoint syncs into writable home)
       - ~/.claude:/home/agent/.claude-host:ro

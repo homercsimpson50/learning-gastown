@@ -138,45 +138,25 @@ gtcfeed --agents
 
 ## Rig Repo Setup
 
-### Hot-mount repos (recommended — no restart)
+### How repos are mounted (zero-restart)
 
-Add and remove repos while the container is running:
-
-```bash
-gtc mount ~/code/frontend            # Mount a repo
-gtc mount ~/code/backend api-server  # Mount with custom name
-gtc mounts                           # List all mounts
-gtc unmount frontend                 # Remove a mount
-```
-
-Then register inside the container:
-```bash
-gtc exec gt rig add frontend /gt/rigs-host/frontend --adopt
-```
-
-**How it works**: `gtc mount` creates a symlink in `~/.gtc-rigs/` on the host. This directory is bind-mounted into the container at `/gt/rigs-host/`. Docker follows symlinks through the mount — the container sees changes immediately.
-
-**Config**: Set `GTC_RIGS_DIR` in `~/.gtc.conf` to change the staging directory:
-```bash
-echo 'GTC_RIGS_DIR="$HOME/my-rigs"' > ~/.gtc.conf
-```
-
-### Legacy: Static mounts (requires restart)
-
-Each repo on the host gets a bind-mount in `docker-compose.yml`:
-
-```yaml
-volumes:
-  - ~/code/frontend:/gt/rigs/frontend/repo
-  - ~/code/backend:/gt/rigs/backend/repo
-```
-
-Then inside the container:
+Your entire `~/code/` directory is bind-mounted into the container at `/gt/rigs-host/`. Every repo under `~/code/` is instantly accessible — no restart, no data loss, no session interruption.
 
 ```bash
-gt rig add frontend /gt/rigs/frontend/repo --adopt
-gt rig add backend /gt/rigs/backend/repo --adopt
+gtc mounts                           # List available repos
+gtc mount ~/code/frontend            # Verify a repo is accessible
 ```
+
+To register a repo as a rig, just tell the mayor:
+> "Set up frontend as a rig from /gt/rigs-host/frontend"
+
+The mayor handles `gt rig add` internally.
+
+**Custom code directory**: If your repos aren't under `~/code/`, set `GTC_CODE_DIR` in `~/.gtc.conf`:
+```bash
+echo 'GTC_CODE_DIR="$HOME/projects"' > ~/.gtc.conf
+```
+Then restart the container once: `gtc up`
 
 ### Monorepo with multiple projects
 
