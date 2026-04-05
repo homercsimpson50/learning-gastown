@@ -2,11 +2,14 @@
 #
 # Gas Town iTerm2 Workspace Launcher (AppleScript version)
 #
-# Sets up a 2x2 split layout:
-#   Top-left:     Local Mayor (cd ~/gt && gt attach)
-#   Top-right:    Container Mayor (gtc attach)
-#   Bottom-left:  Shell (cd ~/code)
-#   Bottom-right: Agent Feed (gtc feed --agents)
+# Layout:
+#   ┌──────────┬──────────┬──────────┐
+#   │          │ gtc      │ shell    │
+#   │  local   │ mayor    │ ~/code   │
+#   │  mayor   ├──────────┴──────────┤
+#   │  (tall)  │ gtc feed --agents   │
+#   │          │ (wide)              │
+#   └──────────┴─────────────────────┘
 #
 # Usage:
 #   ./gastown-workspace.sh          # Full workspace
@@ -25,40 +28,45 @@ osascript <<APPLESCRIPT
 tell application "iTerm2"
     activate
 
-    -- Create a new window
     create window with default profile
 
-    tell current session of current tab of current window
-
-        -- Top-left: Local Mayor
-        set name to "local-mayor"
-        write text "cd ~/gt && echo '⚡ Starting local GT...' && gt daemon start 2>/dev/null; gt mayor attach"
-
-        -- Split right → Top-right: Container Mayor
-        tell (split horizontally with default profile)
-            set name to "gtc-mayor"
-            write text "gtc attach"
-        end tell
-
-    end tell
-
-    -- Now we have two panes side by side. Split each vertically.
     tell current tab of current window
 
-        -- Split top-left down → Bottom-left: Code shell
-        tell session 1
-            tell (split vertically with default profile)
-                set name to "code"
-                write text "cd ~/code"
-            end tell
+        -- Pane 1 (full window): Local Mayor
+        tell current session
+            set name to "local-mayor"
+            write text "cd ~/gt && echo '⚡ Starting local GT...' && gt daemon start 2>/dev/null; gt mayor attach"
+
+            -- Split right → right half
+            set rightPane to (split horizontally with default profile)
         end tell
 
-        -- Split top-right down → Bottom-right: Agent Feed
-        tell session 2
-            tell (split vertically with default profile)
-                set name to "feed"
-                write text "$FEED_CMD"
-            end tell
+        -- Pane 2 (right half): will become top-center (gtc mayor)
+        tell rightPane
+            set name to "gtc-mayor"
+            write text "gtc attach"
+
+            -- Split right pane horizontally → top-right (shell)
+            set topRight to (split horizontally with default profile)
+        end tell
+
+        -- Pane 3 (top-right): Shell
+        tell topRight
+            set name to "code"
+            write text "cd ~/code"
+        end tell
+
+        -- Split pane 2 (gtc mayor) vertically down → bottom-right (feed)
+        -- But we want bottom-right to span under both top-center and top-right
+        -- So split topRight vertically instead (it will merge visually)
+        tell rightPane
+            set bottomRight to (split vertically with default profile)
+        end tell
+
+        -- Pane 4 (bottom-right wide): Agent Feed
+        tell bottomRight
+            set name to "feed"
+            write text "$FEED_CMD"
         end tell
 
     end tell

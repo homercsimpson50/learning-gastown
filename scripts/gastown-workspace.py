@@ -2,20 +2,17 @@
 """
 Gas Town iTerm2 Workspace Launcher
 
-Sets up a 2x2 split layout in iTerm2:
-
-  ┌─────────────────────┬─────────────────────┐
-  │  Local Mayor        │  Container Mayor    │
-  │  cd ~/gt            │  gtc attach         │
-  │  gt up; gt attach   │                     │
-  ├─────────────────────┼─────────────────────┤
-  │  Shell              │  Agent Feed         │
-  │  cd ~/code          │  gtc feed           │
-  │                     │  --agents --ai      │
-  └─────────────────────┴─────────────────────┘
+Layout:
+  ┌──────────┬──────────┬──────────┐
+  │          │ gtc      │ shell    │
+  │  local   │ mayor    │ ~/code   │
+  │  mayor   ├──────────┴──────────┤
+  │  (tall)  │ gtc feed --agents   │
+  │          │ (wide)              │
+  └──────────┴─────────────────────┘
 
 Usage:
-  ./gastown-workspace.py          # Full workspace (all 4 panes)
+  ./gastown-workspace.py          # Full workspace
   ./gastown-workspace.py --no-ai  # Skip Ollama/AI summary
 
 Requires iTerm2 with Python API enabled:
@@ -26,7 +23,6 @@ import iterm2
 import sys
 import asyncio
 
-# Pane commands
 LOCAL_MAYOR = 'cd ~/gt && echo "Starting local GT..." && gt daemon start 2>/dev/null; gt mayor attach'
 CONTAINER_MAYOR = 'gtc attach'
 CODE_SHELL = 'cd ~/code'
@@ -37,43 +33,34 @@ AGENT_FEED_AI = 'gtc feed --agents --ai'
 async def main(connection):
     app = await iterm2.async_get_app(connection)
 
-    # Use AI flag
     use_ai = "--no-ai" not in sys.argv
     feed_cmd = AGENT_FEED_AI if use_ai else AGENT_FEED
 
-    # Create a new window with the first pane (top-left: local mayor)
+    # Create window — starts as single pane (local mayor)
     window = await iterm2.Window.async_create(connection)
-    top_left = window.current_tab.current_session
+    left = window.current_tab.current_session
+    await left.async_set_name("local-mayor")
 
-    # Set the window title
-    await top_left.async_set_name("mayor - local gt (tmux)")
+    # Split left vertically → right half
+    right_top = await left.async_split_pane(vertical=True)
+    await right_top.async_set_name("gtc-mayor")
 
-    # Split top-left horizontally → top-right (container mayor)
-    top_right = await top_left.async_split_pane(vertical=True)
-    await top_right.async_set_name("docker-compose")
+    # Split right-top vertically → top-right (shell)
+    top_right = await right_top.async_split_pane(vertical=True)
+    await top_right.async_set_name("code")
 
-    # Split top-left vertically → bottom-left (code shell)
-    bottom_left = await top_left.async_split_pane(vertical=False)
-    await bottom_left.async_set_name("code")
+    # Split right-top horizontally down → bottom-right (feed, wide)
+    bottom_right = await right_top.async_split_pane(vertical=False)
+    await bottom_right.async_set_name("feed")
 
-    # Split top-right vertically → bottom-right (agent feed)
-    bottom_right = await top_right.async_split_pane(vertical=False)
-    await bottom_right.async_set_name("GT Feed [AGENTS]")
-
-    # Small delay to let panes initialize
     await asyncio.sleep(0.5)
 
-    # Send commands to each pane
-    await bottom_left.async_send_text(CODE_SHELL + '\n')
-    await top_left.async_send_text(LOCAL_MAYOR + '\n')
-
-    # Start container stack first, wait, then attach
-    await top_right.async_send_text(CONTAINER_MAYOR + '\n')
-
-    # Agent feed — give containers a moment to start
+    # Send commands
+    await left.async_send_text(LOCAL_MAYOR + '\n')
+    await right_top.async_send_text(CONTAINER_MAYOR + '\n')
+    await top_right.async_send_text(CODE_SHELL + '\n')
     await asyncio.sleep(1)
     await bottom_right.async_send_text(feed_cmd + '\n')
 
 
-# Run via iTerm2 Python API
 iterm2.run_until_complete(main)
