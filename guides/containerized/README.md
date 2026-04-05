@@ -128,13 +128,35 @@ gtc attach
 ### 6. Watch agents work (optional)
 
 ```bash
-# Install local LLM for AI summaries (optional, $0 cost)
-brew install ollama && brew services start ollama && ollama pull qwen2.5:1.5b
-
-# Watch the agent feed with AI summary panel
-gtcfeed --agents
-# Press 's' for AI summary, 'r' to filter by rig
+gtc feed --agents        # Agent activity feed
+gtc feed --agents --ai   # With AI summary (auto-installs Ollama on first use)
 ```
+
+### 7. Full workspace (optional)
+
+Launch the complete Gas Town iTerm2 workspace with one command:
+
+```bash
+~/code/learning-gastown/scripts/gastown-workspace.sh        # without AI
+~/code/learning-gastown/scripts/gastown-workspace.sh --ai   # with AI summary
+```
+
+This sets up a split layout:
+
+```
+┌──────────┬──────────┬──────────┐
+│          │ gtc      │ shell    │
+│  local   │ mayor    │ ~/code   │
+│  mayor   ├──────────┴──────────┤
+│  (tall)  │ gtc feed --agents   │
+│          │ (wide)              │
+└──────────┴─────────────────────┘
+```
+
+- **Left (tall)**: Local mayor — your direct GT session (`gt attach`)
+- **Top-center**: Containerized mayor — sandboxed agents (`gtc attach`)
+- **Top-right**: Shell — explore repos, run tests (`~/code`)
+- **Bottom-right (wide)**: Agent feed — real-time view of what agents are doing, with optional AI summary
 
 ---
 
