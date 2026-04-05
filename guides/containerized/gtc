@@ -243,16 +243,83 @@ cmd_attach() {
     docker compose -f "$COMPOSE_FILE" exec gastown gt mayor attach
 }
 
+OLLAMA_MODEL="${GTC_OLLAMA_MODEL:-qwen2.5:1.5b}"
+
+_ensure_ollama() {
+    # 1. Check if ollama is installed
+    if ! command -v ollama >/dev/null 2>&1; then
+        echo ""
+        echo -e "${BOLD}AI Summary requires Ollama (local LLM runtime).${NC}"
+        echo -e "  This will install Ollama via Homebrew and download the ${BOLD}${OLLAMA_MODEL}${NC} model (~1GB)."
+        echo -e "  Estimated time: 2-5 minutes depending on internet speed."
+        echo -e "  Ollama runs locally — ${GREEN}no cloud API calls, no cost.${NC}"
+        echo ""
+        read -r -p "  Install Ollama and download model? [Y/n] " confirm
+        case "$confirm" in
+            [nN]*) echo "  Skipping AI summary."; return 1 ;;
+        esac
+        echo ""
+        echo -e "  ${BOLD}Installing Ollama...${NC}"
+        brew install ollama || die "Failed to install Ollama"
+    fi
+
+    # 2. Check if ollama service is running
+    if ! curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
+        echo -e "  Starting Ollama service..."
+        brew services start ollama 2>/dev/null || ollama serve &>/dev/null &
+        # Wait for it to be ready
+        local tries=0
+        while ! curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do
+            tries=$((tries + 1))
+            [ $tries -gt 15 ] && die "Ollama failed to start after 15 seconds"
+            sleep 1
+        done
+        echo -e "  ${GREEN}Ollama running.${NC}"
+    fi
+
+    # 3. Check if model is pulled
+    if ! ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"; then
+        echo ""
+        echo -e "  ${BOLD}Downloading model ${OLLAMA_MODEL}...${NC} (this is a one-time download)"
+        ollama pull "$OLLAMA_MODEL" || die "Failed to download model"
+        echo -e "  ${GREEN}Model ready.${NC}"
+    fi
+
+    return 0
+}
+
 cmd_feed() {
     # Detect container VLogs port
     local vlogs_port
     vlogs_port=$(docker inspect gt-victoria-logs --format '{{range $p,$conf := .NetworkSettings.Ports}}{{if eq $p "9428/tcp"}}{{(index $conf 0).HostPort}}{{end}}{{end}}' 2>/dev/null || echo "9428")
 
-    # Run local gt binary (has summary feature) pointed at container VLogs
+    # Check for --ai flag
+    local ai_enabled=""
+    local feed_args=()
+    for arg in "$@"; do
+        if [ "$arg" = "--ai" ]; then
+            ai_enabled=1
+        else
+            feed_args+=("$arg")
+        fi
+    done
+
+    # If --ai, ensure Ollama is set up
+    if [ -n "$ai_enabled" ]; then
+        if _ensure_ollama; then
+            echo -e "  AI summary enabled. Press ${BOLD}s${NC} in the feed to toggle."
+            echo ""
+        else
+            ai_enabled=""
+        fi
+    fi
+
+    # Run local gt binary pointed at container VLogs
     GT_VLOGS_QUERY_URL="http://localhost:${vlogs_port}/select/logsql/query" \
     GT_OTEL_METRICS_URL= \
     GT_OTEL_LOGS_URL= \
-    gt feed "$@"
+    GT_FEED_AI="${ai_enabled}" \
+    gt feed "${feed_args[@]}"
 }
 
 cmd_exec() {
