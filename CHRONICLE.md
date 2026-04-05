@@ -920,6 +920,40 @@ The parent directory approach won because:
 | `gtc test` | Run 42+ integration tests |
 | `gtc sync` | Sync fork with upstream gastown |
 
+### iTerm2 Workspace Launcher
+
+Created `scripts/gastown-workspace.sh` — one command to set up the full Gas Town development environment:
+
+```
+┌──────────┬──────────┬──────────┐
+│          │ gtc      │ shell    │
+│  local   │ mayor    │ ~/code   │
+│  mayor   ├──────────┴──────────┤
+│  (tall)  │ gtc feed --agents   │
+│          │ (wide)              │
+└──────────┴─────────────────────┘
+```
+
+- Left (full height): Local mayor session — direct GT control
+- Top-center: Containerized mayor — sandboxed agents
+- Top-right: Shell for exploring repos and running tests
+- Bottom-right (wide): Agent feed showing user↔mayor conversation + polecat work
+
+Window auto-sizes to 90% of screen. `--ai` flag enables Ollama summary panel.
+
+### Day 2 Summary
+
+What started as fixing a VictoriaLogs sort bug turned into a full-day build session:
+
+- **Agent feed TUI**: Fixed summarizer for real Claude Code events, added rig column/filter, split-screen AI summary panel, user input capture (mad-max 🏎️ icon), idle event filtering
+- **Containerized GT**: 42+ integration tests, gateway token management with `gtc auth`, Three Walls security model documented, `~/code/` parent mount
+- **Inception test**: Containerized mayor autonomously ran 3 polecats across 2 repos — all tests pass, all code pushed
+- **Developer experience**: `gtc` CLI (mount/unmount/auth/feed), interactive fzf unmount, workspace launcher, `~/.gtc.conf` config
+- **Local LLM**: Ollama integration for $0 AI summaries, auto-install on first `--ai` use, cleanup on exit
+
+Fork commits: 12 commits on `homercsimpson50/gastown@feat/agent-observability-tui`
+Learning-gastown commits: 25+ commits across the session
+
 ---
 
 *This chronicle will be updated as exploration continues.*
