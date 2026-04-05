@@ -62,10 +62,10 @@ services:
       - dolt-data:/gt/.dolt-data
 
       # --- Rig repos ---
-      # Host code directory mounted once. gtc mount/unmount registers repos
-      # with the mayor — no container restart needed.
-      # Configure: GTC_CODE_DIR in ~/.gtc.conf (default: ~/code)
-      - ${GTC_CODE_DIR:-~/code}:/gt/rigs-host:rw
+      # Nothing mounted by default. Configure mounts in ~/.gtc.conf:
+      #   GTC_MOUNTS="/path/to/repo1 /path/to/repo2"
+      # Then run: gtc up
+      # Or use: gtc mount ~/code/myproject (adds to config + restarts)
 
       # Host Claude settings (read-only staging — entrypoint syncs into writable home)
       - ~/.claude:/home/agent/.claude-host:ro

@@ -171,10 +171,27 @@ cmd_up() {
         mounts+=("${RESOLVED_MOUNTS[@]}")
     fi
 
-    # Add standalone repos
+    # Add standalone repos from CLI
     if [ ${#repos[@]} -gt 0 ]; then
         mounts+=("${repos[@]}")
     fi
+
+    # Add mounts from config file (GTC_MOUNTS in ~/.gtc.conf)
+    for path in ${GTC_MOUNTS:-}; do
+        local name="$(basename "$path")"
+        # Skip if already added via CLI
+        local already=false
+        for m in "${mounts[@]+"${mounts[@]}"}"; do
+            if echo "$m" | grep -q "^${path}:"; then
+                already=true
+                break
+            fi
+        done
+        if [ "$already" = false ] && [ -d "$path" ]; then
+            mounts+=("${path}:/gt/rigs/${name}/repo")
+            echo -e "  ${GREEN}+${NC} config ${BOLD}${name}${NC} → /gt/rigs/${name}/repo"
+        fi
+    done
 
     echo ""
     generate_override "${mounts[@]+"${mounts[@]}"}"
@@ -346,8 +363,8 @@ if [ -f "$GTC_CONFIG" ]; then
     # shellcheck source=/dev/null
     . "$GTC_CONFIG"
 fi
-# Code directory mounted into container (set in ~/.gtc.conf or default ~/code)
-CODE_DIR="${GTC_CODE_DIR:-$HOME/code}"
+# Mounts configured in ~/.gtc.conf as GTC_MOUNTS (space-separated paths)
+# Example: GTC_MOUNTS="~/code/frontend ~/code/backend ~/code/monorepo"
 
 cmd_mount() {
     local path="${1:-}"
@@ -356,85 +373,80 @@ cmd_mount() {
     path="$(cd "$path" 2>/dev/null && pwd)" || die "Path not found: $1"
     local name="${2:-$(basename "$path")}"
 
-    # Check if path is under the mounted code directory
-    case "$path" in
-        "$CODE_DIR"/*)
-            local rel="${path#$CODE_DIR/}"
-            echo -e "${GREEN}Available:${NC} $name → /gt/rigs-host/$rel"
-            echo -e "  Tell the mayor: ${DIM}set up $name as a rig from /gt/rigs-host/$rel${NC}"
-            ;;
-        *)
-            echo -e "${RED}Path is not under $CODE_DIR${NC}"
-            echo -e "  The container can only see repos under ${BOLD}$CODE_DIR${NC}"
-            echo -e "  Either move the repo there, or set GTC_CODE_DIR in ~/.gtc.conf"
-            echo -e "  to a parent directory that contains this repo."
-            ;;
-    esac
+    # Check if already in config
+    local current_mounts="${GTC_MOUNTS:-}"
+    if echo " $current_mounts " | grep -q " $path "; then
+        echo -e "${YELLOW}Already configured:${NC} $name ($path)"
+        return
+    fi
+
+    # Add to config
+    if [ -f "$GTC_CONFIG" ]; then
+        if grep -q "^GTC_MOUNTS=" "$GTC_CONFIG"; then
+            # Append to existing line
+            sed -i '' "s|^GTC_MOUNTS=\"|GTC_MOUNTS=\"$path |" "$GTC_CONFIG"
+        else
+            echo "GTC_MOUNTS=\"$path\"" >> "$GTC_CONFIG"
+        fi
+    else
+        echo "GTC_MOUNTS=\"$path\"" > "$GTC_CONFIG"
+    fi
+
+    echo -e "${GREEN}Added:${NC} $name → $path"
+    echo -e "  Container path: /gt/rigs/$name/repo"
+    echo ""
+    echo -e "  Restarting container to apply mount..."
+    _apply_mounts_and_restart
+    echo ""
+    echo -e "  Tell the mayor: ${DIM}set up $name as a rig${NC}"
 }
 
 cmd_unmount() {
-    # Get registered rigs from container
-    local rigs
-    rigs=$(docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig list --json 2>/dev/null \
-        | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    for r in data.get('rigs', data) if isinstance(data, dict) else data:
-        name = r.get('name', r) if isinstance(r, dict) else r
-        print(name)
-except: pass
-" 2>/dev/null)
-
-    # Fallback: parse text output
-    if [ -z "$rigs" ]; then
-        rigs=$(docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig list 2>/dev/null \
-            | grep -oE '^\s*[a-zA-Z0-9_-]+' | sed 's/^[[:space:]]*//' \
-            | grep -v "^Rigs\|^$")
+    local current_mounts="${GTC_MOUNTS:-}"
+    if [ -z "$current_mounts" ]; then
+        echo "No mounts configured. (Check ~/.gtc.conf)"
+        return
     fi
 
-    if [ -z "$rigs" ]; then
-        echo "No rigs registered."
+    # Build list of mounted paths with names
+    local mount_list=""
+    for path in $current_mounts; do
+        local name="$(basename "$path")"
+        mount_list+="$name ($path)"$'\n'
+    done
+    mount_list=$(echo "$mount_list" | sed '/^$/d')
+
+    if [ -n "${1:-}" ]; then
+        # Direct name provided
+        _remove_mount "$1"
         return
     fi
 
     # Interactive selection
-    if [ -n "${1:-}" ]; then
-        # Direct name provided
-        local name="$1"
-        echo -e "Removing rig ${BOLD}$name${NC}..."
-        docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig remove "$name" 2>&1
-        return
-    fi
-
-    # Interactive: use fzf if available, otherwise numbered list
     if command -v fzf >/dev/null 2>&1; then
         local selected
-        selected=$(echo "$rigs" | fzf --multi \
-            --header="Select rigs to remove (Tab to toggle, Enter to confirm, Esc to cancel)" \
+        selected=$(echo "$mount_list" | fzf --multi \
+            --header="Select mounts to remove (Tab to toggle, Enter to confirm, Esc to cancel)" \
             --prompt="unmount> " \
             --height=40% --reverse \
             --border --border-label=" gtc unmount ")
 
-        if [ -z "$selected" ]; then
-            echo "Cancelled."
-            return
-        fi
+        [ -z "$selected" ] && { echo "Cancelled."; return; }
 
-        echo "$selected" | while IFS= read -r name; do
-            echo -e "Removing rig ${BOLD}$name${NC}..."
-            docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig remove "$name" 2>&1
+        echo "$selected" | while IFS= read -r line; do
+            local path
+            path=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
+            _remove_mount_by_path "$path"
         done
     else
-        # Fallback: numbered list
-        echo -e "${BOLD}Registered rigs:${NC}"
+        echo -e "${BOLD}Configured mounts:${NC}"
         local i=1
-        local rig_array=()
-        while IFS= read -r name; do
-            echo -e "  $i) $name"
-            rig_array+=("$name")
+        local path_array=()
+        for path in $current_mounts; do
+            echo -e "  $i) $(basename "$path") → $path"
+            path_array+=("$path")
             i=$((i + 1))
-        done <<< "$rigs"
+        done
         echo ""
         read -r -p "Enter numbers to remove (comma-separated, or 'q' to cancel): " selection
         [ "$selection" = "q" ] && return
@@ -443,39 +455,86 @@ except: pass
         for num in "${nums[@]}"; do
             num=$(echo "$num" | tr -d ' ')
             local idx=$((num - 1))
-            if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#rig_array[@]}" ]; then
-                local name="${rig_array[$idx]}"
-                echo -e "Removing rig ${BOLD}$name${NC}..."
-                docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig remove "$name" 2>&1
+            if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#path_array[@]}" ]; then
+                _remove_mount_by_path "${path_array[$idx]}"
             fi
         done
     fi
+
+    _apply_mounts_and_restart
+}
+
+_remove_mount() {
+    local name="$1"
+    local path
+    for p in ${GTC_MOUNTS:-}; do
+        if [ "$(basename "$p")" = "$name" ]; then
+            path="$p"
+            break
+        fi
+    done
+    [ -z "${path:-}" ] && die "Mount not found: $name"
+    _remove_mount_by_path "$path"
+    _apply_mounts_and_restart
+}
+
+_remove_mount_by_path() {
+    local path="$1"
+    if [ -f "$GTC_CONFIG" ]; then
+        # Remove path from GTC_MOUNTS in config
+        local new_mounts
+        new_mounts=$(echo "${GTC_MOUNTS:-}" | tr ' ' '\n' | grep -v "^${path}$" | tr '\n' ' ' | sed 's/ $//')
+        sed -i '' "s|^GTC_MOUNTS=.*|GTC_MOUNTS=\"$new_mounts\"|" "$GTC_CONFIG"
+        # Re-source to update in-memory
+        GTC_MOUNTS="$new_mounts"
+    fi
+    echo -e "${GREEN}Removed:${NC} $(basename "$path") ($path)"
+}
+
+_apply_mounts_and_restart() {
+    # Regenerate override file from GTC_MOUNTS
+    # Re-read config in case it changed
+    [ -f "$GTC_CONFIG" ] && . "$GTC_CONFIG"
+
+    local mounts="${GTC_MOUNTS:-}"
+    if [ -z "$mounts" ]; then
+        rm -f "$OVERRIDE_FILE"
+    else
+        cat > "$OVERRIDE_FILE" <<'HEADER'
+# Auto-generated by gtc mount — do not edit manually.
+services:
+  gastown:
+    volumes:
+HEADER
+        for path in $mounts; do
+            local name="$(basename "$path")"
+            echo "      - ${path}:/gt/rigs/${name}/repo" >> "$OVERRIDE_FILE"
+        done
+    fi
+
+    # Soft-restart gastown only (volumes persist)
+    local compose_args=("-f" "$COMPOSE_FILE")
+    [ -f "$OVERRIDE_FILE" ] && compose_args+=("-f" "$OVERRIDE_FILE")
+    docker compose "${compose_args[@]}" up -d --no-deps gastown 2>&1 | grep -v "^$"
 }
 
 cmd_mounts() {
-    echo -e "${BOLD}Code directory:${NC} $CODE_DIR → /gt/rigs-host/"
-    echo ""
+    local mounts="${GTC_MOUNTS:-}"
 
-    # Show registered rigs from the container
-    echo -e "${BOLD}Registered rigs:${NC}"
-    local rigs
-    rigs=$(docker compose -f "$COMPOSE_FILE" exec -T gastown gt rig list 2>/dev/null) || rigs=""
-    if [ -n "$rigs" ]; then
-        echo "$rigs" | sed 's/^/  /'
-    else
-        echo "  (none — tell the mayor to set up rigs)"
-    fi
-
-    echo ""
-    echo -e "${BOLD}Available repos (under $CODE_DIR):${NC}"
-    if [ -d "$CODE_DIR" ]; then
-        for dir in "$CODE_DIR"/*/; do
-            [ -d "$dir/.git" ] && echo -e "  ${GREEN}$(basename "$dir")${NC}"
+    echo -e "${BOLD}Configured mounts${NC} (in ~/.gtc.conf):"
+    if [ -n "$mounts" ]; then
+        for path in $mounts; do
+            local name="$(basename "$path")"
+            echo -e "  ${GREEN}$name${NC} → $path → /gt/rigs/$name/repo"
         done
+    else
+        echo "  (none)"
     fi
+
     echo ""
-    echo -e "  Mount: ${DIM}gtc mount ~/code/<repo>${NC}"
-    echo -e "  Then tell the mayor to register it as a rig."
+    echo -e "  Add:    ${DIM}gtc mount ~/code/myproject${NC}"
+    echo -e "  Remove: ${DIM}gtc unmount${NC} (interactive)"
+    echo -e "  Config: ${DIM}~/.gtc.conf${NC}"
 }
 
 cmd_auth() {
@@ -615,13 +674,14 @@ case "$cmd" in
         echo "  gtc sync            Sync fork with upstream gastown"
         echo "  gtc test            Run integration tests"
         echo ""
-        echo "Repos (no restart, no data loss):"
-        echo "  gtc mount ~/code/myproject       Check repo is accessible"
-        echo "  gtc mounts                       List available repos"
-        echo "  gtc unmount myproject             Remove a rig (via mayor)"
+        echo "Repo mounts:"
+        echo "  gtc mount ~/code/myproject       Add mount (saves to config + restarts)"
+        echo "  gtc unmount                      Interactive remove (fzf)"
+        echo "  gtc unmount myproject             Direct remove"
+        echo "  gtc mounts                       List configured mounts"
         echo ""
-        echo "All repos under ~/code/ (or GTC_CODE_DIR) are accessible."
-        echo "Tell the mayor to register them as rigs."
+        echo "Config: ~/.gtc.conf"
+        echo "  GTC_MOUNTS=\"~/code/repo1 ~/code/repo2\"  (loaded on gtc up)"
         ;;
     *)
         die "Unknown command: $cmd (try 'gtc help')"

@@ -140,25 +140,34 @@ gtcfeed --agents
 
 ## Rig Repo Setup
 
-### How repos are mounted (zero-restart)
+### How repos are mounted
 
-Your entire `~/code/` directory is bind-mounted into the container at `/gt/rigs-host/`. Every repo under `~/code/` is instantly accessible — no restart, no data loss, no session interruption.
+Nothing is mounted by default. You choose what to expose to the container.
 
+**Option 1: gtc mount (interactive)**
 ```bash
-gtc mounts                           # List available repos
-gtc mount ~/code/frontend            # Verify a repo is accessible
+gtc mount ~/code/frontend            # Adds mount, restarts container
+gtc mount ~/code/backend             # Add another
+gtc mounts                           # List configured mounts
+gtc unmount                          # Interactive fzf picker to remove
 ```
 
-To register a repo as a rig, just tell the mayor:
-> "Set up frontend as a rig from /gt/rigs-host/frontend"
-
-The mayor handles `gt rig add` internally.
-
-**Custom code directory**: If your repos aren't under `~/code/`, set `GTC_CODE_DIR` in `~/.gtc.conf`:
+**Option 2: Config file (~/.gtc.conf)**
 ```bash
-echo 'GTC_CODE_DIR="$HOME/projects"' > ~/.gtc.conf
+# ~/.gtc.conf
+GTC_MOUNTS="/Users/homer/code/frontend /Users/homer/code/backend"
 ```
-Then restart the container once: `gtc up`
+Then `gtc up` applies all configured mounts automatically.
+
+**Option 3: CLI flags (one-time)**
+```bash
+gtc up --repo ~/code/frontend --repo ~/code/backend
+```
+
+All three can be combined — CLI flags merge with config file mounts.
+
+After mounting, tell the mayor to register as a rig:
+> "Set up frontend as a rig"
 
 ### Monorepo with multiple projects
 
