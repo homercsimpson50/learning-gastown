@@ -28,6 +28,87 @@ achieved code execution inside the container.
 
 ---
 
+## Defense in Depth: Three Walls
+
+Autonomous agents run with `--dangerously-skip-permissions`, meaning they can
+execute any command. Three layers of isolation contain the blast radius:
+
+### Wall 1: Container Isolation
+
+The Docker container prevents agents from accessing anything on the host that
+isn't explicitly mounted.
+
+| Host Resource | Accessible? |
+|---|---|
+| `~/.ssh/` (SSH keys) | No |
+| `~/.aws/` (cloud credentials) | No |
+| `~/.config/` (app configs) | No |
+| Browser data, Slack tokens | No |
+| Host processes | No |
+| Host filesystem (`/Users/*`) | No |
+| Mounted code repos (`~/code/`) | Yes (read-write) |
+
+Even if a polecat runs `rm -rf /`, it only destroys the container — not your
+host. Mounted repos are the only bridge, and they're protected by Wall 2.
+
+Security controls: `cap_drop: ALL`, `no-new-privileges`, PID limit (512),
+memory limit (4GB), minimal capabilities (CHOWN/SETUID/SETGID only).
+
+### Wall 2: Git Worktree Isolation
+
+Each polecat gets its own git worktree — a separate checkout on its own branch.
+Polecats cannot modify `main` directly.
+
+```
+/gt/inception/
+  ├── mayor/rig/              ← mayor's clone (main, reads only in practice)
+  ├── refinery/rig/           ← refinery worktree (sees polecat branches)
+  └── polecats/
+      ├── rust/inception/     ← polecat rust (branch: polecat/rust-abc)
+      └── quartz/inception/   ← polecat quartz (branch: polecat/quartz-xyz)
+```
+
+What this means:
+- A polecat can only `git commit` on its own branch — not `main`
+- Changes don't reach `main` until the refinery merge queue processes them
+- If a polecat goes rogue, delete the branch — `main` is untouched
+- Multiple polecats work in parallel without stepping on each other
+- Each polecat's working directory is its worktree — it can't see other polecats' files
+
+### Wall 3: Gateway Token Isolation
+
+API tokens (GitHub, Jira, Slack) are held by the gateway sidecar. Agents call
+the gateway via internal Docker network — they never see raw tokens.
+
+```
+Polecat → gateway:9999/git/credential → GitHub (token injected server-side)
+```
+
+- Tokens never touch disk inside the GT container
+- Gateway enforces repo/project allowlists
+- Gateway blocks dangerous endpoints (admin, delete, transfer)
+- Gateway rate-limits credential requests (30/min)
+- If the GT container is compromised, the attacker still doesn't have tokens
+
+### Combined: What an Agent CAN vs CANNOT Do
+
+| Action | Possible? | Why |
+|---|---|---|
+| Read mounted repos | Yes | That's the point — agents need to read code |
+| Write to its own branch | Yes | Worktree isolation allows this |
+| Push its branch | Yes | Via gateway, rate-limited |
+| Modify `main` directly | No | Worktree is on a polecat branch |
+| Read `~/.ssh` or `~/.aws` | No | Container isolation |
+| Kill host processes | No | Container isolation |
+| See other polecats' worktrees | Technically yes | Same container, but separate directories |
+| Access GitHub admin APIs | No | Gateway blocks them |
+| Exfiltrate API tokens | No | Gateway holds them, agents never see raw tokens |
+| Fork-bomb the host | No | PID limit: 512 |
+| OOM the host | No | Memory limit: 4GB |
+| Merge to main without review | No | Refinery merge queue gates all merges |
+
+---
+
 ## Critical
 
 ### C1. Claude Auth Token Exfiltration [REDUCED — auth-method dependent]

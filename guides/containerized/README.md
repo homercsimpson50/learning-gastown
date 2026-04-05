@@ -142,32 +142,26 @@ gtcfeed --agents
 
 ### How repos are mounted
 
-Nothing is mounted by default. You choose what to expose to the container.
+Your `~/code/` directory is mounted into the container at `/gt/rigs-host/`. Every repo underneath is instantly accessible — no restart needed to add new repos.
 
-**Option 1: gtc mount (interactive)**
+**Why this is safe** (see [SECURITY.md](SECURITY.md) "Three Walls"):
+1. **Container**: agents can't see `~/.ssh`, `~/.aws`, or anything outside mounted paths
+2. **Worktree**: polecats work on isolated branches, never modify `main` directly
+3. **Gateway**: API tokens never enter the GT container
+
+The mayor can READ all your repos (to explore, answer questions), but only WRITES through polecats which are branch-isolated and merge-gated.
+
 ```bash
-gtc mount ~/code/frontend            # Adds mount, restarts container
-gtc mount ~/code/backend             # Add another
-gtc mounts                           # List configured mounts
-gtc unmount                          # Interactive fzf picker to remove
+gtc mounts                # List available repos
 ```
 
-**Option 2: Config file (~/.gtc.conf)**
+To register a repo as a rig, tell the mayor:
+> "Set up frontend as a rig from /gt/rigs-host/frontend"
+
+**Custom code directory**: Set `GTC_CODE_DIR` in `~/.gtc.conf`:
 ```bash
-# ~/.gtc.conf
-GTC_MOUNTS="/Users/homer/code/frontend /Users/homer/code/backend"
+echo 'GTC_CODE_DIR="$HOME/projects"' > ~/.gtc.conf
 ```
-Then `gtc up` applies all configured mounts automatically.
-
-**Option 3: CLI flags (one-time)**
-```bash
-gtc up --repo ~/code/frontend --repo ~/code/backend
-```
-
-All three can be combined — CLI flags merge with config file mounts.
-
-After mounting, tell the mayor to register as a rig:
-> "Set up frontend as a rig"
 
 ### Monorepo with multiple projects
 

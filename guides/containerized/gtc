@@ -368,35 +368,26 @@ fi
 
 cmd_mount() {
     local path="${1:-}"
-    [ -n "$path" ] || die "Usage: gtc mount <path> [name]"
+    [ -n "$path" ] || die "Usage: gtc mount <path>"
 
     path="$(cd "$path" 2>/dev/null && pwd)" || die "Path not found: $1"
     local name="${2:-$(basename "$path")}"
+    local code_dir="${GTC_CODE_DIR:-$HOME/code}"
 
-    # Check if already in config
-    local current_mounts="${GTC_MOUNTS:-}"
-    if echo " $current_mounts " | grep -q " $path "; then
-        echo -e "${YELLOW}Already configured:${NC} $name ($path)"
-        return
-    fi
-
-    # Add to config
-    if [ -f "$GTC_CONFIG" ]; then
-        if grep -q "^GTC_MOUNTS=" "$GTC_CONFIG"; then
-            # Append to existing line
-            sed -i '' "s|^GTC_MOUNTS=\"|GTC_MOUNTS=\"$path |" "$GTC_CONFIG"
-        else
-            echo "GTC_MOUNTS=\"$path\"" >> "$GTC_CONFIG"
-        fi
-    else
-        echo "GTC_MOUNTS=\"$path\"" > "$GTC_CONFIG"
-    fi
-
-    echo -e "${GREEN}Added:${NC} $name → $path"
-    echo -e "  Container path: /gt/rigs/$name/repo"
-    echo ""
-    echo -e "  Run ${BOLD}gtc up${NC} to apply (restarts container)."
-    echo -e "  Then tell the mayor: ${DIM}set up $name as a rig${NC}"
+    # Check if path is under the mounted code directory
+    case "$path" in
+        "$code_dir"/*)
+            local rel="${path#$code_dir/}"
+            echo -e "${GREEN}Available:${NC} $name → /gt/rigs-host/$rel"
+            echo ""
+            echo -e "  Tell the mayor: ${DIM}set up $name as a rig from /gt/rigs-host/$rel${NC}"
+            ;;
+        *)
+            echo -e "${RED}Not under $code_dir${NC}"
+            echo -e "  The container mounts ${BOLD}$code_dir${NC} → /gt/rigs-host/"
+            echo -e "  Move the repo there, or set GTC_CODE_DIR in ~/.gtc.conf"
+            ;;
+    esac
 }
 
 cmd_unmount() {
@@ -518,22 +509,21 @@ HEADER
 }
 
 cmd_mounts() {
-    local mounts="${GTC_MOUNTS:-}"
+    local code_dir="${GTC_CODE_DIR:-$HOME/code}"
 
-    echo -e "${BOLD}Configured mounts${NC} (in ~/.gtc.conf):"
-    if [ -n "$mounts" ]; then
-        for path in $mounts; do
-            local name="$(basename "$path")"
-            echo -e "  ${GREEN}$name${NC} → $path → /gt/rigs/$name/repo"
+    echo -e "${BOLD}Code directory:${NC} $code_dir → /gt/rigs-host/"
+    echo ""
+    echo -e "${BOLD}Available repos:${NC}"
+    if [ -d "$code_dir" ]; then
+        for dir in "$code_dir"/*/; do
+            [ -d "$dir/.git" ] && echo -e "  ${GREEN}$(basename "$dir")${NC}"
         done
     else
-        echo "  (none)"
+        echo "  ($code_dir not found)"
     fi
 
     echo ""
-    echo -e "  Add:    ${DIM}gtc mount ~/code/myproject${NC}"
-    echo -e "  Remove: ${DIM}gtc unmount${NC} (interactive)"
-    echo -e "  Config: ${DIM}~/.gtc.conf${NC}"
+    echo -e "  Tell the mayor to register a rig: ${DIM}set up <name> as a rig${NC}"
 }
 
 cmd_auth() {

@@ -842,6 +842,20 @@ The staging directory (`~/.gtc-rigs/`, configurable via `~/.gtc.conf`) is bind-m
 
 All on `homercsimpson50/gastown@feat/agent-observability-tui`.
 
+### Security Model: Three Walls
+
+Through discussion about whether to mount `~/code/` into the container (convenience vs isolation), arrived at a clear three-layer defense model:
+
+**Wall 1 — Container**: Docker prevents access to `~/.ssh`, `~/.aws`, host processes, anything outside mounted paths. Even `rm -rf /` only damages the container. Security controls: `cap_drop: ALL`, `no-new-privileges`, PID/memory limits.
+
+**Wall 2 — Git Worktrees**: Each polecat gets its own worktree on its own branch (`polecat/rust-xyz`). It cannot modify `main`. Changes only reach `main` through the refinery merge queue. If a polecat goes rogue, delete the branch.
+
+**Wall 3 — Gateway Token Isolation**: API tokens (GitHub, Jira) are held by the gateway sidecar. Agents call `gateway:9999` — they never see raw tokens. Gateway enforces allowlists and blocks dangerous endpoints.
+
+The conclusion: mounting `~/code/` is safe because the mayor can read (needed for its job) but can only write through polecats, which are branch-isolated and merge-gated. The container can't reach anything beyond the mounted directory.
+
+Full writeup in [SECURITY.md](guides/containerized/SECURITY.md) under "Defense in Depth: Three Walls".
+
 ---
 
 *This chronicle will be updated as exploration continues.*

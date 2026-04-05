@@ -62,10 +62,11 @@ services:
       - dolt-data:/gt/.dolt-data
 
       # --- Rig repos ---
-      # Nothing mounted by default. Configure mounts in ~/.gtc.conf:
-      #   GTC_MOUNTS="/path/to/repo1 /path/to/repo2"
-      # Then run: gtc up
-      # Or use: gtc mount ~/code/myproject (adds to config + restarts)
+      # Code directory mounted read-write. All repos under ~/code/ are
+      # accessible. Safe because: polecats work in isolated worktrees
+      # (own branch, not main), refinery gates merges, container can't
+      # reach ~/.ssh or ~/.aws. See SECURITY.md "Three Walls".
+      - ${GTC_CODE_DIR:-~/code}:/gt/rigs-host:rw
 
       # Host Claude settings (read-only staging — entrypoint syncs into writable home)
       - ~/.claude:/home/agent/.claude-host:ro
