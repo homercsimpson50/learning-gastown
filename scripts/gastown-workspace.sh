@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Gas Town iTerm2 Workspace Launcher (AppleScript version)
+# Gas Town iTerm2 Workspace Launcher
 #
 # Layout:
 #   ┌──────────┬──────────┬──────────┐
@@ -14,8 +14,6 @@
 # Usage:
 #   ./gastown-workspace.sh          # Full workspace
 #   ./gastown-workspace.sh --ai     # Include AI summary in feed
-#
-# Requires: iTerm2
 
 set -euo pipefail
 
@@ -27,50 +25,82 @@ fi
 osascript <<APPLESCRIPT
 tell application "iTerm2"
     activate
-
     create window with default profile
 
     tell current tab of current window
+        -- Start with one pane. Split it left | right.
+        -- iTerm2: "split vertically" = side by side (left|right)
+        -- iTerm2: "split horizontally" = top/bottom
 
-        -- Pane 1 (full window): Local Mayor
+        -- Step 1: Split into left (local mayor) | right
         tell current session
             set name to "local-mayor"
-            write text "cd ~/gt && echo '⚡ Starting local GT...' && gt daemon start 2>/dev/null; gt mayor attach"
-
-            -- Split right → right half
-            set rightPane to (split horizontally with default profile)
+            set rightPane to (split vertically with default profile)
         end tell
 
-        -- Pane 2 (right half): will become top-center (gtc mayor)
+        -- Step 2: Split right into top-right | bottom-right (feed)
+        tell rightPane
+            set feedPane to (split horizontally with default profile)
+        end tell
+
+        -- Step 3: Split top-right into gtc-mayor | shell
         tell rightPane
             set name to "gtc-mayor"
-            write text "gtc attach"
-
-            -- Split right pane horizontally → top-right (shell)
-            set topRight to (split horizontally with default profile)
+            set shellPane to (split vertically with default profile)
         end tell
 
-        -- Pane 3 (top-right): Shell
-        tell topRight
+        -- Name remaining panes
+        tell shellPane
             set name to "code"
+        end tell
+        tell feedPane
+            set name to "feed"
+        end tell
+
+        -- Send commands
+        tell current session
+            write text "cd ~/gt && echo '⚡ Starting local GT...' && gt daemon start 2>/dev/null; gt mayor attach"
+        end tell
+        tell rightPane
+            write text "gtc attach"
+        end tell
+        tell shellPane
             write text "cd ~/code"
         end tell
-
-        -- Split pane 2 (gtc mayor) vertically down → bottom-right (feed)
-        -- But we want bottom-right to span under both top-center and top-right
-        -- So split topRight vertically instead (it will merge visually)
-        tell rightPane
-            set bottomRight to (split vertically with default profile)
-        end tell
-
-        -- Pane 4 (bottom-right wide): Agent Feed
-        tell bottomRight
-            set name to "feed"
+        tell feedPane
             write text "$FEED_CMD"
         end tell
+    end tell
 
+    -- Resize: make the window ~80% of screen
+    tell current window
+        set screenBounds to bounds of current window
+        tell application "Finder"
+            set screenSize to bounds of window of desktop
+        end tell
+    end tell
+end tell
+
+-- Resize window to 80% of screen using System Events
+tell application "System Events"
+    tell process "iTerm2"
+        set frontWindow to front window
+        set {screenW, screenH} to {1440, 900}
+        try
+            tell application "Finder"
+                set screenSize to bounds of window of desktop
+                set screenW to item 3 of screenSize
+                set screenH to item 4 of screenSize
+            end tell
+        end try
+        set targetW to (screenW * 0.8) as integer
+        set targetH to (screenH * 0.8) as integer
+        set targetX to ((screenW - targetW) / 2) as integer
+        set targetY to ((screenH - targetH) / 2) as integer
+        set position of frontWindow to {targetX, targetY}
+        set size of frontWindow to {targetW, targetH}
     end tell
 end tell
 APPLESCRIPT
 
-echo "Gas Town workspace launched in iTerm2"
+echo "Gas Town workspace launched"
