@@ -108,16 +108,37 @@ gt up
 
 ## Rig Repo Setup
 
-### Standalone repos
+### Hot-mount repos (recommended — no restart)
+
+Add and remove repos while the container is running:
+
+```bash
+gtc mount ~/code/frontend            # Mount a repo
+gtc mount ~/code/backend api-server  # Mount with custom name
+gtc mounts                           # List all mounts
+gtc unmount frontend                 # Remove a mount
+```
+
+Then register inside the container:
+```bash
+gtc exec gt rig add frontend /gt/rigs-host/frontend --adopt
+```
+
+**How it works**: `gtc mount` creates a symlink in `~/.gtc-rigs/` on the host. This directory is bind-mounted into the container at `/gt/rigs-host/`. Docker follows symlinks through the mount — the container sees changes immediately.
+
+**Config**: Set `GTC_RIGS_DIR` in `~/.gtc.conf` to change the staging directory:
+```bash
+echo 'GTC_RIGS_DIR="$HOME/my-rigs"' > ~/.gtc.conf
+```
+
+### Legacy: Static mounts (requires restart)
 
 Each repo on the host gets a bind-mount in `docker-compose.yml`:
 
 ```yaml
 volumes:
-  # One line per rig
   - ~/code/frontend:/gt/rigs/frontend/repo
   - ~/code/backend:/gt/rigs/backend/repo
-  - ~/code/infra:/gt/rigs/infra/repo
 ```
 
 Then inside the container:
@@ -125,7 +146,6 @@ Then inside the container:
 ```bash
 gt rig add frontend /gt/rigs/frontend/repo --adopt
 gt rig add backend /gt/rigs/backend/repo --adopt
-gt rig add infra /gt/rigs/infra/repo --adopt
 ```
 
 ### Monorepo with multiple projects

@@ -29,21 +29,20 @@
 
 ---
 
-## Agent observability TUI (`gt feed --agents`)
+## Agent observability TUI (`gt feed --agents`) — DONE
 
-**Priority:** High
-**Context:** The agent feed TUI (`gt feed --agents`) shows real-time agent tool-call activity inside the container. Polecat rust built the initial version on branch `feat/agent-observability-tui` but it still needs work.
+**Status:** Working. Pushed to fork, tested live with containerized GT.
 
-### Remaining work
+Completed:
+- ~~Push the feature branch~~ → on `homercsimpson50/gastown@feat/agent-observability-tui`
+- ~~Test inside the containerized setup end-to-end~~ → works via `gtcfeed --agents`
+- ~~LLM-summarized log lines~~ → AI summary panel via Ollama (`s` key)
+- ~~Polish the TUI layout and key bindings~~ → rig column, rig filter, split-screen summary
+- Upstream PR to `gastownhall/gastown` — pending (need repo write access)
 
-- Push the feature branch (blocked on repo write access — see mail thread `hq-wisp-2ux`)
-- Test inside the containerized setup end-to-end with VictoriaLogs
-- LLM-summarized log lines — compress raw tool calls into human-readable one-liners
-- Polish the TUI layout and key bindings
-- Upstream PR to `gastownhall/gastown` once stable
+### Remaining polish
 
-### Notes
-
-- Source: `homercsimpson50/gastown@feat/agent-observability-tui`
-- Requires VictoriaLogs + `GT_OTEL_LOGS_URL` + `GT_LOG_AGENT_OUTPUT=true` (already in compose)
-- The README documents usage under Observability > Agent Observability TUI
+- Fix Claude Code onboarding theme picker (appears after `gtc down`/`up` despite `hasCompletedOnboarding: true`)
+- Capture user-typed prompts in feed (fix deployed to fork, needs image rebuild)
+- Summary log persistence (JSONL file or SQLite)
+- Pin column headers in feed view

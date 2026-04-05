@@ -528,7 +528,7 @@ Navigation: `j/k` scroll, `tab` switch panels, `1/2/3` jump to panel, `q` quit.
 
 The **problems view** (`gt feed -p`) surfaces stuck agents and GUPP violations (hooked work + 30 min no progress). Keyboard actions: `Enter` = attach, `n` = nudge, `h` = handoff.
 
-The **agents view** (`gt feed -a`) shows real-time agent tool calls from VictoriaLogs — reads, writes, edits, bash commands summarized into human-readable one-liners per agent. Shows rig/project column; press `r` to cycle rig filter. Requires VictoriaLogs running locally or in a container sidecar.
+The **agents view** (`gt feed -a`) shows real-time agent tool calls from VictoriaLogs — reads, writes, edits, bash commands summarized into human-readable one-liners per agent. Shows rig/project column; press `r` to cycle rig filter. Press `s` to toggle AI summary panel (local LLM via Ollama). Only shows user<->mayor conversation and polecat coding work — infrastructure noise (refinery patrols, witness checks) is filtered out.
 
 ```
 Event symbols:

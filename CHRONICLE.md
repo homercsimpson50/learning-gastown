@@ -768,4 +768,80 @@ See [plans/inception/RESULTS.md](plans/inception/RESULTS.md) for detailed phase-
 
 ---
 
+---
+
+## 2026-04-04: Day 2 (Part 3) — Agent Feed TUI, AI Summary, and Hot Mounts
+
+*Written by the Gas Town Mayor (Claude Opus 4.6)*
+
+### What Changed
+
+Built a real-time agent observability TUI with local LLM-powered summaries, fixed multiple feed issues through live debugging with the user, and added hot-mountable repos to the containerized setup.
+
+### Agent Feed TUI (`gt feed --agents`)
+
+Iterative debugging session with the user watching the live feed while the containerized mayor worked. Fixes made during live testing:
+
+| Issue | Root Cause | Fix |
+|-------|-----------|-----|
+| Only 1 event showing | VLogs returns newest-first, dedup dropped older events | Sort oldest-first before emitting |
+| Raw JSON in display (`Bash: {"command":"..."}`) | Content has `ToolName: {json}` prefix format | Parse prefix, extract tool name, summarize input |
+| Mayor text not showing | Content starts with `\n\n`, first-line split returns empty | Strip leading whitespace before splitting |
+| User prompts not captured | JSONL user turns have `content` as string, not array | Custom `UnmarshalJSON` on `ccMessage` to handle both |
+| "Connecting to VictoriaLogs" stuck | All events filtered as idle, health flag never set | Send health signal on first successful VLogs query |
+| Summary not auto-refreshing | Tick chain never started in agents view | Add `tick()` to `Init()` for agents view |
+| Refinery noise drowning real work | No role-based filtering | Filter refinery/witness/deacon/boot at source |
+| Mayor housekeeping in feed | Startup routine (gt hook, gt mail, gt escalate) visible | Filter known housekeeping commands |
+
+### AI Summary Panel (Local LLM via Ollama)
+
+Press `s` in the agents feed to toggle a split-screen summary panel. A local LLM (Qwen 2.5 via Ollama) generates rolling summaries of agent activity — like Google Meet/Teams AI meeting notes, but for agent orchestration.
+
+- **Model**: `qwen2.5:1.5b` (2GB, runs on M1 16GB)
+- **Update interval**: Every 10 seconds
+- **Summary style**: Rolling stream with timestamps (appends, doesn't overwrite)
+- **Idle filtering**: Only summarizes mayor<->user conversation and polecat work
+- **Cost**: $0 — runs entirely on local hardware
+
+Setup: `brew install ollama && brew services start ollama && ollama pull qwen2.5:1.5b`
+
+### Hot-Mountable Repos
+
+Added `gtc mount` / `gtc unmount` for adding repos without container restart:
+
+```bash
+gtc mount ~/code/myproject      # Symlinks into staging dir
+gtc unmount myproject            # Removes symlink
+gtc mounts                       # Lists all mounts
+```
+
+The staging directory (`~/.gtc-rigs/`, configurable via `~/.gtc.conf`) is bind-mounted into the container. Symlinks are followed through the mount — container sees changes immediately.
+
+### Container Auth Improvements
+
+- **Claude Code**: Entrypoint now syncs `.credentials.json` from host (Google OAuth tokens carry over, no browser login in container)
+- **GitHub**: Entrypoint syncs `~/.config/gh/hosts.yml` from host and runs `gh auth setup-git` (git push works out of the box)
+- **Metrics warning**: Suppressed `GT_OTEL_METRICS_URL=""` (no VictoriaMetrics in stack)
+
+### Known Issues
+
+- **Claude Code onboarding**: Theme picker appears on every `gtc down`/`gtc up` cycle. The `hasCompletedOnboarding` flag in `settings.json` is set but Claude Code 2.1.92 doesn't respect it. Workaround: don't `gtc down` — use `gtc up` to restart (preserves volumes).
+- **User prompts in feed**: Requires container image rebuild to include the `ccMessage.UnmarshalJSON` fix. The local `gtcfeed` binary has the display fix but the container's agent logger needs the new binary to forward user messages.
+
+### Fork Commits
+
+| Commit | Description |
+|--------|-------------|
+| `758ace64` | fix: sort VictoriaLogs entries oldest-first for correct dedup |
+| `e23684f5` | feat: add rig column and rig filter to agents feed view |
+| `f4482efd` | feat: add AI summary panel (local LLM via Ollama) |
+| `7d5588e2` | feat: briefer summaries, idle filter, scrollable panel |
+| `e7aedd09` | fix: parse prefixed tool content format |
+| `e403558c` | feat: show user prompts + mayor text in agents feed |
+| `9ce8dc81` | fix: no markdown in summary output |
+
+All on `homercsimpson50/gastown@feat/agent-observability-tui`.
+
+---
+
 *This chronicle will be updated as exploration continues.*
