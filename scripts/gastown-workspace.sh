@@ -72,8 +72,8 @@ tell application "iTerm2"
         end tell
     end tell
 
-    -- Resize window to ~80% of screen (1440x900 → 1152x720, centered)
-    set bounds of current window to {144, 90, 1296, 810}
+    -- Resize window to ~90% of screen (1440x900 → 1296x810, centered)
+    set bounds of current window to {72, 45, 1368, 855}
 
 end tell
 APPLESCRIPT
