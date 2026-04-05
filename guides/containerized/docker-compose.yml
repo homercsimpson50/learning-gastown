@@ -61,13 +61,13 @@ services:
       # to avoid journal corruption from VirtioFS fsync semantics.
       - dolt-data:/gt/.dolt-data
 
-      # --- Rig repos (bind-mount from host) ---
-      # Standalone repos — one mount per rig:
-      # - ~/code/frontend:/gt/rigs/frontend/repo
-      # - ~/code/backend:/gt/rigs/backend/repo
-      #
-      # Monorepo — mount the root, then use `gt rig add` with subpaths:
-      # - ~/code/monorepo:/gt/rigs/monorepo/repo
+      # --- Rig repos ---
+      # Hot-mountable staging dir: symlink repos into the rigs dir on the host.
+      # Container sees them immediately — no restart needed.
+      # Use: gtc mount ~/code/myproject
+      #      gtc unmount myproject
+      # Configure dir: GTC_RIGS_DIR in ~/.gtc.conf (default: ~/.gtc-rigs)
+      - ${GTC_RIGS_DIR:-~/.gtc-rigs}:/gt/rigs-host:rw
 
       # Host Claude settings (read-only staging — entrypoint syncs into writable home)
       - ~/.claude:/home/agent/.claude-host:ro

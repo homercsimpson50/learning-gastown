@@ -251,6 +251,62 @@ cmd_test() {
     "$SCRIPT_DIR/test-container.sh"
 }
 
+# Config file for gtc settings
+GTC_CONFIG="$HOME/.gtc.conf"
+if [ -f "$GTC_CONFIG" ]; then
+    # shellcheck source=/dev/null
+    . "$GTC_CONFIG"
+fi
+RIGS_DIR="${GTC_RIGS_DIR:-$HOME/.gtc-rigs}"
+
+cmd_mount() {
+    local path="${1:-}"
+    [ -n "$path" ] || die "Usage: gtc mount <path> [name]"
+
+    # Resolve to absolute path
+    path="$(cd "$path" 2>/dev/null && pwd)" || die "Path not found: $1"
+    local name="${2:-$(basename "$path")}"
+
+    mkdir -p "$RIGS_DIR"
+
+    if [ -e "$RIGS_DIR/$name" ]; then
+        echo -e "${YELLOW}Already mounted:${NC} $name → $(readlink "$RIGS_DIR/$name" 2>/dev/null || echo "$RIGS_DIR/$name")"
+        return
+    fi
+
+    ln -s "$path" "$RIGS_DIR/$name"
+    echo -e "${GREEN}Mounted:${NC} $name → $path"
+    echo -e "  Container path: /gt/rigs-host/$name"
+    echo ""
+    echo -e "  To register as a rig inside the container:"
+    echo -e "  ${DIM}gtc exec gt rig add $name /gt/rigs-host/$name --adopt${NC}"
+}
+
+cmd_unmount() {
+    local name="${1:-}"
+    [ -n "$name" ] || die "Usage: gtc unmount <name>"
+
+    if [ ! -e "$RIGS_DIR/$name" ]; then
+        die "Not mounted: $name"
+    fi
+
+    rm -f "$RIGS_DIR/$name"
+    echo -e "${GREEN}Unmounted:${NC} $name"
+}
+
+cmd_mounts() {
+    echo -e "${BOLD}Mounted rigs:${NC}"
+    if [ -d "$RIGS_DIR" ] && [ "$(ls -A "$RIGS_DIR" 2>/dev/null)" ]; then
+        for link in "$RIGS_DIR"/*; do
+            local name="$(basename "$link")"
+            local target="$(readlink "$link" 2>/dev/null || echo "$link")"
+            echo -e "  ${GREEN}$name${NC} → $target"
+        done
+    else
+        echo "  (none — run 'gtc mount ~/code/myproject')"
+    fi
+}
+
 cmd_sync() {
     echo -e "${BOLD}Syncing gastown fork with upstream...${NC}"
 
@@ -309,6 +365,9 @@ case "$cmd" in
     status)   cmd_status ;;
     attach)   cmd_attach ;;
     feed)     cmd_feed "$@" ;;
+    mount)    cmd_mount "$@" ;;
+    unmount)  cmd_unmount "$@" ;;
+    mounts)   cmd_mounts ;;
     exec)     cmd_exec "$@" ;;
     shell)    cmd_shell ;;
     test)     cmd_test ;;
@@ -327,10 +386,15 @@ case "$cmd" in
         echo "  gtc sync            Sync fork with upstream gastown"
         echo "  gtc test            Run integration tests"
         echo ""
-        echo "Mount examples:"
+        echo "Hot-mount repos (no restart):"
+        echo "  gtc mount ~/code/myproject      Mount a repo"
+        echo "  gtc mount ~/code/myproject api   Mount with custom name"
+        echo "  gtc unmount myproject            Remove a mount"
+        echo "  gtc mounts                       List mounted repos"
+        echo ""
+        echo "Legacy mount (requires restart):"
         echo "  gtc up --repo ~/code/frontend --repo ~/code/backend"
         echo "  gtc up --monorepo ~/code/cpe-analytics -p 42 -p 56"
-        echo "  gtc up --repo ~/code/api --monorepo ~/code/cpe-analytics -p 42"
         ;;
     *)
         die "Unknown command: $cmd (try 'gtc help')"
