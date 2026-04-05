@@ -448,10 +448,12 @@ cmd_unmount() {
 
     # Process each selected line
     local removed=0
+    echo "[debug] processing selected lines..."
     while IFS= read -r line; do
         [ -z "$line" ] && continue
         local rmpath
         rmpath=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
+        echo "[debug] removing path: '$rmpath'"
         _remove_mount_by_path "$rmpath"
         removed=$((removed + 1))
     done <<< "$selected"
