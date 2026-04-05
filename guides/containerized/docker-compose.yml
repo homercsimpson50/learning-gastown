@@ -76,6 +76,11 @@ services:
       # Writable Claude home — persists credentials, sessions, and history
       - claude-data:/home/agent/.claude
 
+      # Claude Code runtime state — persists onboarding completion, locks, versions
+      # Without this, theme picker reappears on every container restart
+      - claude-state:/home/agent/.local/state/claude
+      - claude-share:/home/agent/.local/share/claude
+
       # NOTE: Do NOT mount ~/.gitconfig — the entrypoint writes git config
       # from GIT_USER/GIT_EMAIL env vars. A read-only mount blocks that.
 
@@ -136,3 +141,5 @@ volumes:
   dolt-data:
   vlogs-data:
   claude-data:
+  claude-state:
+  claude-share:
