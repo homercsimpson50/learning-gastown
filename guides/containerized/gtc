@@ -424,17 +424,21 @@ cmd_unmount() {
     local selected_paths=()
     if command -v fzf >/dev/null 2>&1; then
         local selected
-        selected=$(echo "$mount_list" | fzf \
-            --header="Arrow keys to navigate, Enter to remove, Esc to cancel" \
+        selected=$(echo "$mount_list" | fzf --multi \
+            --header="Space to toggle, Enter to confirm, Esc to cancel" \
             --prompt="unmount> " \
+            --marker="✓" --pointer="▸" \
             --height=40% --reverse \
+            --bind="space:toggle" \
             --border --border-label=" gtc unmount ")
 
         [ -z "$selected" ] && { echo "Cancelled."; return; }
 
-        local path
-        path=$(echo "$selected" | sed 's/.*(\(.*\))/\1/')
-        selected_paths+=("$path")
+        while IFS= read -r line; do
+            local path
+            path=$(echo "$line" | sed 's/.*(\(.*\))/\1/')
+            selected_paths+=("$path")
+        done <<< "$selected"
     else
         echo -e "${BOLD}Configured mounts:${NC}"
         local i=1
