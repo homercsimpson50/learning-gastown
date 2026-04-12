@@ -956,4 +956,72 @@ Learning-gastown commits: 25+ commits across the session
 
 ---
 
+## 2026-04-05 to 2026-04-12: Multi-Project Build Sprint
+
+*Written by the Gas Town Mayor (Claude Opus 4.6)*
+
+### Projects Built
+
+Three private repos created and built autonomously by GT polecats:
+
+**Mimir** (`homercsimpson50/mimir`) — Local Threat Intelligence Platform
+- Phase 1: Python/FastAPI scaffolding, SQLite schema, CLI
+- Phase 2: Feed ingestion (URLhaus, ThreatFox, MITRE ATT&CK, CISA KEV)
+- Phase 3: Web UI (HTMX + Cytoscape.js graph), watchlist, search
+- Phase 4: Enrichment (Shodan, CIRCL, VirusTotal), OTX, text feed adapters, export/import
+- Phase 5: Auto-pull scheduler, desktop notifications, NetworkX graph analytics
+- Dashboard rebuild: OpenCTI-style with insights cards, local timestamps
+- Bugfixes: STIX UUID validation, Starlette API changes, adapter errors
+- Total: ~7,000+ lines, 63 files, 12 feed adapters, 5 architecture docs
+- Status: Running locally, pulling real threat feeds (84,400+ indicators loaded)
+
+**Athena** (`homercsimpson50/athena`) — Account Cleanup Service (OAC)
+- Phase 1: 8 Go microservice stubs, Dockerfiles, docker-compose
+- Phase 2: Gmail OAuth, email parsing, account classification
+- Phase 3: Temporal deletion workflows, playbook service (35 services), GDPR templates
+- Phase 4: End-to-end wiring, consumer UI, integration tests
+- Phase 5: Real Temporal integration, compliance audit, playbook expansion
+- Standalone scanner: Single-binary Gmail scanner with OAuth, reads headers only
+- Google Cloud OAuth setup: consent screen, test users, redirect URIs
+- Total: ~7,600+ lines, 74 files, 5 architecture docs
+- Status: Scanner connects to real Gmail, microservices run via docker-compose
+
+**Onyx** (`homercsimpson50/onyx`) — Dark Web Site Identification (arxiv 2401.13320)
+- Paper analysis and implementation spec
+- BERTopic pipeline (SBERT + UMAP + HDBSCAN + c-TF-IDF)
+- Tor crawler, MinHash LSH deduplication
+- Status: Phase 1 built by polecat, in progress
+
+### API Keys Configured
+
+| Service | Key Location | Purpose |
+|---------|-------------|---------|
+| abuse.ch | `~/code/mimir/.env` | URLhaus, ThreatFox, MalwareBazaar, Feodo, SSL Blacklist |
+| AlienVault OTX | `~/code/mimir/.env` | Threat intel pulses |
+| NIST NVD | `~/code/mimir/.env` | CVE vulnerability data |
+| VirusTotal | `~/code/mimir/.env` | Malware/URL spot-checks |
+| Google OAuth | `~/code/athena/.env` | Gmail read-only access for Athena scanner |
+
+### Mimir Dashboard Issues
+
+- Initial dashboard: Starlette `TemplateResponse` API change caused 500 errors (fixed)
+- Timestamps showed "Invalid Date" (fixed: robust JS parser for multiple ISO formats)
+- Dashboard was generic — added actionable insights (critical CVEs, multi-feed IPs, Tor overlap, feed errors) with clickable links to search/watchlist pages
+- OpenCTI-style rebuild slung: world map (Leaflet.js), donut/line/bar charts (Chart.js), heatmap, treemap, timeline
+
+### Athena Scanner Issues
+
+- OAuth flow: consumer UI proxied to user-mgmt microservice (too many moving parts for testing). Built standalone single-binary scanner instead.
+- Redirect URI mismatch: had to match port 3000 in Google Cloud Console
+- Token expiry: access tokens expire, need re-auth. Added error page with "Re-connect Gmail" button.
+- 0 emails scanned: Gmail API errors not logged — added response body logging and status code checks.
+
+### GT Agent Feed
+
+- Feed stopped working after laptop restart (daemon lost telemetry env vars)
+- Fix: restart daemon with `GT_OTEL_LOGS_URL` and `GT_LOG_AGENT_OUTPUT=true`
+- Session restarts needed for polecats to pick up new telemetry config
+
+---
+
 *This chronicle will be updated as exploration continues.*
