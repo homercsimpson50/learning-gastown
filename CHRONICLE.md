@@ -1024,4 +1024,71 @@ Three private repos created and built autonomously by GT polecats:
 
 ---
 
+## 2026-04-12: Athena Dogfooding — Real Gmail Scan + Account Analysis
+
+*Written by the Gas Town Mayor (Claude Opus 4.6)*
+
+### Gmail Scanner
+
+Built a standalone Go scanner (`cmd/scanner/main.go`) that bypasses the microservices architecture for direct testing. Single binary, Google OAuth, reads email headers only (From, Subject, Date).
+
+**Results**: 9,983 emails scanned → 438 unique services discovered across 12 categories.
+
+Key engineering:
+- Token persistence to `~/.athena/tokens.json` with auto-refresh — connect Gmail once, never again
+- Result persistence to `~/.athena/results.json` — survives restarts
+- Per-page telemetry logging (page X/100, Y emails, Z services, rate)
+- Error handling with token refresh on 401
+
+### Category Reclassification
+
+The initial scan put 360/438 services (82%) in "Other" — useless. Polecat obsidian reclassified all of them into 30+ categories:
+
+| Category | Count | % |
+|----------|-------|---|
+| Finance | 56 | 12% |
+| Shopping | 53 | 12% |
+| Nonprofit/Charity | 37 | 8% |
+| Travel | 33 | 7% |
+| Education | 27 | 6% |
+| Developer | 27 | 6% |
+| News/Media | 26 | 5% |
+| Work | 24 | 5% |
+| Healthcare | 15 | 3% |
+| + 21 more categories | ... | ... |
+| **Other** | **0** | **0%** |
+
+### Deletion Analysis
+
+For all 438 services, polecats researched deletion methods:
+- 271 (66%) require Email + OTP
+- 85 (21%) are newsletter unsubscribes
+- 24 (6%) require login + settings navigation
+- 22 (5%) have CCPA/GDPR forms
+- 7 (2%) require login + GDPR form
+
+Priority breakdown: 132 do-not-delete, 116 high priority, 170 medium, 20 low.
+
+**Key finding**: Many "newsletter unsubscribe" services were actually product updates from services with active accounts (alarm.com sends arming notifications, ticketmaster sends ticket updates). These need account deletion, not just unsubscribe.
+
+### Interactive Dashboard
+
+Built `dogfooding-experiment/index.html` — single-file dark-theme dashboard with:
+- Category pie chart, deletion method donut, priority bars
+- Priority × Complexity ROI matrix
+- Sortable/filterable table with row expansion for deletion details
+- Evidence column showing how deletion method was determined
+- Do-not-delete toggle, search, JSON/CSV export
+
+### Artifacts
+
+All under `athena/dogfooding-experiment/`:
+- `scan-results.json` — raw 438-service scan data
+- `deletion-analysis.json` — enriched with deletion methods, evidence, categories
+- `analysis.md` — full writeup
+- `index.html` — interactive dashboard
+- `Athena — Results.html` — original scan results page
+
+---
+
 *This chronicle will be updated as exploration continues.*
