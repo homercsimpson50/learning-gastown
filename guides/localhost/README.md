@@ -16,9 +16,45 @@ This guide is for running Gas Town **on your local machine** (not in containers 
 | --- | --- |
 | `gt-env-install.sh` | Idempotent installer that writes a marked block into your shell rc. |
 | `gtf.sh` | Convenience wrapper around `gt feed` / `gt log` with env baked in. |
+| `start-workspace.sh` | One command to open the 3-pane iTerm2 workspace (service, mayor, feed). |
 
-Both are safe to re-run. The installer keeps a timestamped backup of your rc the first
+All are safe to re-run. The installer keeps a timestamped backup of your rc the first
 time it touches it.
+
+---
+
+## Crisp MVP — get it running with logs in ~5 commands
+
+```sh
+# 1) one-time install (run from a clone of this repo)
+brew install victorialogs && brew services start victorialogs
+install -m 0755 guides/localhost/gtf.sh            ~/.local/bin/gtf
+install -m 0755 guides/localhost/gt-env-install.sh ~/.local/bin/gt-env-install
+install -m 0755 guides/localhost/start-workspace.sh ~/.local/bin/gt-workspace
+gt-env-install                # adds env vars to your shell rc
+
+# 2) pick up the env in this shell (or open a new terminal)
+exec $SHELL -l
+
+# 3) launch the workspace
+gt-workspace                  # opens iTerm2 with 3 panes (service / mayor / feed)
+```
+
+That's it. Inside the new iTerm2 window:
+
+- **Left** — boots the town with `gt start` and tails `gt log -f`. Watch services
+  spawn (deacon → mayor → witnesses).
+- **Top right** — auto-attaches to the Mayor's tmux session after a 4s delay.
+  Type to talk to the Mayor; `Ctrl-B D` detaches without killing it.
+- **Bottom right** — `gtf -a` agent observability TUI. As the Mayor (or any
+  polecat) makes tool calls, they show up here.
+
+If the bottom-right pane stays empty after the Mayor has clearly done something:
+the Mayor was started before `GT_OTEL_LOGS_URL` was exported. Fix:
+
+```sh
+gt mayor restart              # respawns Mayor with the env you have now
+```
 
 ---
 
