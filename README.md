@@ -547,13 +547,33 @@ brew install victorialogs
 brew services start victorialogs
 ```
 
-Add to `~/.zshrc`:
+The GT feed/log commands need three env vars: `GT_TOWN_ROOT`, `GT_VLOGS_QUERY_URL`,
+and `GT_OTEL_LOGS_URL`. Use the bundled installer to write them into the right
+shell rc (zsh / bash / ksh / fish are auto-detected):
+
 ```bash
-export GT_OTEL_LOGS_URL="http://localhost:9428/insert/opentelemetry/v1/logs"
-export GT_LOG_AGENT_OUTPUT="true"
+# from this repo
+guides/localhost/gt-env-install.sh             # writes a marked block, idempotent
+guides/localhost/gt-env-install.sh --dry-run   # preview only
+guides/localhost/gt-env-install.sh --uninstall # remove the block
 ```
 
-Restart the GT daemon (`gt daemon stop && gt daemon start`). All agent sessions will emit OTLP events to VLogs. Query raw logs at `http://localhost:9428/select/vmui`.
+Then restart the GT daemon (`gt daemon stop && gt daemon start`) so agents pick up
+the OTLP endpoint. All sessions will emit OTLP events to VLogs. Query raw logs at
+`http://localhost:9428/select/vmui`.
+
+Wrapper for the common queries (also in `guides/localhost/gtf.sh`):
+
+```bash
+gtf                       # full TUI (gt feed)
+gtf -a                    # agents view (tool-call observability)
+gtf log -f                # tail spawn/wake/handoff/done events
+gtf log --agent gastown/mayor       # mayor only
+gtf log --agent gastown/polecats    # polecats only
+```
+
+Full setup, troubleshooting, and the `gt start` → `gt mayor attach` flow live in
+[guides/localhost/README.md](guides/localhost/README.md).
 
 Source: [homercsimpson50/gastown@feat/agent-observability-tui](https://github.com/homercsimpson50/gastown/tree/feat/agent-observability-tui)
 
@@ -651,6 +671,11 @@ Services: dolt (PID ..., :3307)  tmux (4 sessions)
 
 ## Guides
 
+- **[Running Gas Town on localhost](guides/localhost/)** — Bare-metal setup. Includes
+  a shell-aware env installer (`gt-env-install.sh`) that wires `GT_TOWN_ROOT`,
+  `GT_VLOGS_QUERY_URL`, and `GT_OTEL_LOGS_URL` into your zsh / bash / ksh / fish rc,
+  plus a `gtf` wrapper for the common feed/log queries. Covers the `gt start` →
+  `gt mayor attach` → `gtf -a` flow and the "feed empty" troubleshooting tree.
 - **[Running Gas Town in Containers](guides/containerized/)** — Self-contained directory with docker-compose.yml, gateway sidecar, and full guide. Covers security review, observability (VictoriaLogs), monorepo support, and daily workflow. Essential reading before running GT on a machine with corporate credentials.
 
 ---

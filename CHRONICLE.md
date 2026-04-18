@@ -1091,4 +1091,92 @@ All under `athena/dogfooding-experiment/`:
 
 ---
 
+---
+
+## 2026-04-18: Localhost Setup Guide — Shell-Aware Env Installer + `gtf` Wrapper
+
+*Written by the Gas Town Mayor (Claude Opus 4.7)*
+
+### The Problem (Again)
+
+Day 2 (Apr 4) chronicled it once: "Feed stopped working after laptop restart
+(daemon lost telemetry env vars). Fix: restart daemon with `GT_OTEL_LOGS_URL` and
+`GT_LOG_AGENT_OUTPUT=true`." It came back. Open a fresh terminal, run `gt feed`,
+get nothing — because the env vars only live inside an active Mayor session, not
+in the user's shell rc.
+
+The root cause is three vars `gt feed` / `gt log` need:
+
+| Var | What | Default |
+|---|---|---|
+| `GT_TOWN_ROOT` | Where the town lives | `~/gt` (auto-walks up otherwise) |
+| `GT_VLOGS_QUERY_URL` | LogsQL query endpoint (readers) | `http://localhost:9428/select/logsql/query` |
+| `GT_OTEL_LOGS_URL` | OTLP insert endpoint (spawned agents) | `http://localhost:9428/insert/opentelemetry/v1/logs` |
+
+The reader vars have sane defaults; the writer var (`GT_OTEL_LOGS_URL`) doesn't —
+without it exported in the shell that runs `gt start`, the Mayor boots fine but
+its tool calls never reach VictoriaLogs and `gt feed -a` stays empty.
+
+### What I Built
+
+A new guide directory: [`guides/localhost/`](guides/localhost/).
+
+**`gt-env-install.sh`** — idempotent installer:
+- Detects `$SHELL` and writes to the right rc file: `~/.zshrc`, `~/.bash_profile`
+  (macOS) or `~/.bashrc`, `~/.kshrc`, `~/.profile`, or `~/.config/fish/config.fish`.
+- Writes a marked block (BEGIN/END comments). Re-running replaces it cleanly.
+- Backs up the rc on first touch (`<rc>.gt-backup.<timestamp>`).
+- Prepends `~/.local/bin` to `PATH` if missing.
+- Flags: `--shell <name>`, `--dry-run`, `--uninstall`.
+
+**`gtf.sh`** — wrapper around the common queries:
+
+```sh
+gtf                       # full TUI (gt feed)
+gtf -a                    # agents view (tool-call observability)
+gtf -p                    # problems view (stuck/GUPP)
+gtf plain                 # plain text event stream
+gtf log -f                # tail spawn/wake/handoff/done
+gtf log --agent gastown/mayor       # mayor only
+gtf log --agent gastown/polecats    # polecats only
+```
+
+The wrapper sets the three env vars (with sane defaults so it works in a stripped
+shell) and pings VictoriaLogs health before invoking `gt`, warning instead of
+silently producing an empty feed.
+
+**`README.md`** — covers prereqs (`brew install victorialogs`), the install flow,
+the `gt start` → `gt mayor attach` → `gtf -a` sequence, end-to-end verification
+(`curl http://localhost:9428/health` → `gtf log -n 5` → `gtf -a`), and the
+troubleshooting tree for "feed is empty even though Mayor is running" (the most
+common failure mode: `GT_OTEL_LOGS_URL` wasn't exported in the spawning shell, so
+`gt mayor restart` after sourcing the rc fixes it).
+
+### Smoke Test
+
+Ran `env -i HOME=$HOME PATH=/Users/homer/.local/bin:/usr/bin:/bin gtf plain` — a
+stripped environment with no `GT_*` vars and no shell rc — and got back a real
+event stream. The wrapper's defaults are enough; the installer is for persistence
+across new shells.
+
+### Why This Wasn't Solved Day 2
+
+Day 2's fix was reactive: restart the daemon with the vars set. This guide makes
+it preventive — install once, every new shell has them. And the wrapper means
+nobody has to remember the four commands behind `gt feed -a` ever again.
+
+### Files
+
+```
+guides/localhost/
+├── README.md              # full guide: install, start GT, watch feed, troubleshoot
+├── gt-env-install.sh      # shell-aware env installer (zsh/bash/ksh/fish)
+└── gtf.sh                 # gt feed / gt log wrapper with env baked in
+```
+
+The same scripts are also installed at `~/.local/bin/gtf` and
+`~/.local/bin/gt-env-install` so they're usable on this machine immediately.
+
+---
+
 *This chronicle will be updated as exploration continues.*
