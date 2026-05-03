@@ -1179,4 +1179,93 @@ The same scripts are also installed at `~/.local/bin/gtf` and
 
 ---
 
+## 2026-05-02: Gas City — the SDK shaped like Gas Town
+
+### What is Gas City?
+
+A new repo from the same org: [gastownhall/gascity](https://github.com/gastownhall/gascity), described as an "orchestration-builder SDK for multi-agent coding workflows." If Gas Town is the opinionated end-product, Gas City is the kit underneath it — the same primitives (runtime providers, beads-backed work tracking, formulas, molecules, mail, refinery-style merge gates, controller/supervisor reconciliation) but exposed as a configurable toolkit rather than a fixed Town.
+
+The hint in the docs that frames the whole thing: ["Coming from Gas Town?"](https://github.com/gastownhall/gascity/blob/main/docs/getting-started/coming-from-gastown.md) — a doc whose existence tells you exactly what audience this is for.
+
+### What you get differently than Gas Town
+
+- **A declarative `city.toml`** instead of "the Town is what gt installs."
+- **Multiple runtime providers** out of the box: tmux, subprocess, exec, ACP, and Kubernetes. So agents can run in tmux on your laptop, as plain subprocesses, or in pods on a cluster — same orchestration code on top.
+- **Packs and overlays** for sharing config across cities (think: a "carparts" pack you import into multiple cities).
+- **Controller/supervisor loop that reconciles desired state to running state** — the explicit Kubernetes-style control loop is much more visible than in Gas Town, where it's implicit in the daemons.
+- **A separate machine-wide supervisor** (registered with launchd on macOS or systemd on Linux) so multiple cities on one host share one process.
+
+The CLI is `gc` instead of `gt`. Workflow is:
+```
+gc init <path>          # scaffold city.toml + .gc/
+gc start                # register with the supervisor + start agents
+gc rig add <repo>       # add a project as a rig
+bd create "..."         # job board, same as Gas Town
+gc session attach mayor # talk to the mayor
+```
+
+### Building it
+
+```
+cd ~/code && git clone https://github.com/gastownhall/gascity.git gascity-src
+cd gascity-src && make install
+```
+
+Build fetched its module graph (~2 minutes the first time), then compiled in seconds. Installed `gc` to `~/go/bin/gc` and symlinked `~/.local/bin/gc → ~/go/bin/gc` for path consistency.
+
+`gc init` ran the wizard non-interactively when given `--provider claude-code`, dropping a complete city scaffold (`agents/`, `formulas/`, `orders/`, `overlays/`, `commands/`, `assets/`, `template-fragments/`, `.gc/`, `city.toml`, `pack.toml`) into the target directory in well under a second.
+
+`gc start` then refused to run with two missing deps: dolt 1.86.1+ (host had 1.85.0) and flock. Both fixed by `brew upgrade dolt && brew install flock`. The dolt min-version requirement is interesting — Gas City pins to a recent dolt for some feature the bd provider needs, presumably the new index/journal work.
+
+After upgrades, `gc start` registered the city, installed a launchd plist at `~/Library/LaunchAgents/com.gascity.supervisor.plist`, and brought the supervisor up. `gc doctor` reported 43 passed / 1 warning / 1 failure (the failure being missing custom bead types — "register with `gc doctor --fix`").
+
+### The containerized version
+
+After confirming Gas City works on the host, mirrored the
+`guides/containerized/` setup for it under
+`guides/containerized/gascity/`. The Dockerfile and docker-compose.yml
+are intentionally close to the gastown ones — same upstream base image
+(`docker/sandbox-templates:claude-code`), same security posture
+(`cap_drop: ALL` + `no-new-privileges`, host SSH/AWS not mounted,
+host `~/.claude` and `~/.config/gh` mounted read-only and copied into
+writable home), same Dolt-on-Docker-volume pattern to dodge VirtioFS
+journal corruption.
+
+The differences boil down to:
+
+- `/city` instead of `/gt` as the workspace root.
+- `gc init --provider <runtime>` in the entrypoint replaces the
+  `gt install --git` bootstrap.
+- `CMD ["gc", "supervisor", "run"]` instead of `sleep infinity` — Gas
+  City's supervisor wants to be the foreground process, and inside a
+  container there's no launchd to register with.
+- One service in compose for now (no VictoriaLogs / gateway sidecars
+  yet — Gas City's telemetry story is still maturing).
+
+### Files
+
+```
+guides/containerized/gascity/
+├── Dockerfile           # builds gascity:latest from upstream source
+├── docker-compose.yml   # one-service stack with security + volumes
+└── README.md            # full guide: build, bring up, add rigs, troubleshoot
+```
+
+### Takeaway
+
+Gas City is what happens when you take the Gas Town primitives, extract
+the configurable parts, and add Kubernetes runtime as a peer to tmux.
+The Town wasn't a monolith — it was a specific assembly of these
+pieces. Gas City lets you assemble a different one (different runtime,
+different agent set, different pack imports) without re-implementing
+the substrate.
+
+For day-to-day use on this machine, the gastown container is still the
+faster path — it boots into a usable Mayor without you writing any
+TOML. The gascity container shines when you want to spin up multiple
+cities on one host (each with its own packs and overlays), or run agents
+in K8s instead of tmux.
+
+---
+
 *This chronicle will be updated as exploration continues.*

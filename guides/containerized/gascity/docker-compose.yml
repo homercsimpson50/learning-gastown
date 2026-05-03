@@ -1,0 +1,103 @@
+# Gas City — Containerized Setup
+#
+# Usage:
+#   GIT_USER="Your Name" GIT_EMAIL="you@example.com" docker compose up -d
+#   docker compose exec gascity bash
+#   # then inside the container:
+#   gc cities
+#   gc doctor
+#   gc rig add /city/rigs-host/<your-repo>
+#
+# Prerequisites:
+#   - Build the gascity image first:
+#     cd <gascity-src> && docker build -t gascity:latest \
+#         -f ~/code/learning-gastown/guides/containerized/gascity/Dockerfile .
+#
+# Rig repos: like the gastown setup, your code directory is bind-mounted
+# read-write at /city/rigs-host. From inside the container, run
+# `gc rig add /city/rigs-host/<repo>` to register a project as a rig.
+
+name: gascity
+
+services:
+  gascity:
+    image: gascity:latest
+    container_name: gascity
+    hostname: gascity
+
+    stdin_open: true
+    tty: true
+
+    # Security: drop all capabilities, add back only what's needed.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+          pids: 512
+
+    environment:
+      IS_SANDBOX: 1
+      GIT_USER: ${GIT_USER:-TestUser}
+      GIT_EMAIL: ${GIT_EMAIL:-test@example.com}
+      # Coding-agent runtime to scaffold into the city. Default matches the
+      # gastown container (Claude Code). Other valid values include codex,
+      # gemini, exec — see `gc init --help`.
+      GC_PROVIDER: ${GC_PROVIDER:-claude-code}
+
+    volumes:
+      # Workspace root where the city is initialized.
+      - city-workspace:/city
+
+      # Dolt data on a Docker volume (not macOS bind mount) to avoid
+      # journal corruption from VirtioFS fsync semantics.
+      - dolt-data:/city/.dolt-data
+
+      # --- Rig repos ---
+      # Code directory mounted read-write. All repos under ~/code/ are
+      # accessible. Same security model as the gastown container — agents
+      # work in worktrees scoped under .gc/, never directly modifying the
+      # host repo's tracked main branch.
+      - ${GCC_CODE_DIR:-~/code}:/city/rigs-host:rw
+
+      # Host Claude settings (read-only staging — entrypoint syncs into writable home)
+      - ~/.claude:/home/agent/.claude-host:ro
+
+      # Host gh CLI credentials (read-only — entrypoint syncs for git push)
+      - ~/.config/gh:/home/agent/.config/gh-host:ro
+
+      # Writable Claude home — persists credentials, sessions, and history.
+      - claude-data:/home/agent/.claude
+
+      # Claude Code runtime state — persists onboarding completion, locks,
+      # versions; without this, theme picker reappears every restart.
+      - claude-state:/home/agent/.local/state/claude
+      - claude-share:/home/agent/.local/share/claude
+
+      # NOTE: Do NOT mount ~/.gitconfig — the entrypoint writes git config
+      # from GIT_USER/GIT_EMAIL env vars. A read-only mount blocks that.
+
+    networks:
+      - gc-net
+
+    restart: unless-stopped
+
+networks:
+  gc-net:
+    driver: bridge
+
+volumes:
+  city-workspace:
+  dolt-data:
+  claude-data:
+  claude-state:
+  claude-share:
