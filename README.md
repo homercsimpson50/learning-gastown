@@ -4,6 +4,12 @@ A deep dive into [Gas Town](https://github.com/gastownhall/gastown) and [Beads](
 
 This repo documents what I learned by exploring the codebases, reading the source, and building them from scratch. See also the [Chronicle](CHRONICLE.md) for the full day-by-day build log.
 
+> **New:** the same org now ships [**Gas City**](https://github.com/gastownhall/gascity) — an orchestration-builder *SDK* extracted from Gas Town, with a declarative `city.toml`, multiple runtime providers (tmux / subprocess / exec / ACP / Kubernetes), and packs/overlays for sharing config across cities. CLI is `gc` instead of `gt`.
+>
+> - Notes & comparison: see the [2026-05-02 entry in the Chronicle](CHRONICLE.md#2026-05-02-gas-city--the-sdk-shaped-like-gas-town).
+> - Containerized setup that lives *inside* this repo (next to the gastown one): [`guides/containerized/gascity/`](guides/containerized/gascity/).
+> - A clean, gascity-only setup (no gastown lineage) lives in a separate repo: [`learning-gascity`](https://github.com/homercsimpson50/learning-gascity).
+
 ### Table of Contents
 
 - [What is Gas Town?](#what-is-gas-town)
